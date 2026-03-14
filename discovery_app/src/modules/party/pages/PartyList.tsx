@@ -94,10 +94,27 @@ const [filterText, setFilterText] = useState<number | undefined>(0);
   // }, [filteredParties, currentPage, itemsPerPage]);
 
   const handleLedger = (party: Party) => {
-    categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase())) 
-    ? party.type === "party" ? navigate(`/ledger/1/party/${party.id}`) : navigate(`/ledger/all/list/${party.id}`)
-    : party.type === "supplier" ? navigate(`/ledger/purchase/list/${party.id}`) : navigate(`/ledger/sale/list/${party.id}`)
-    console.log("/ledger/all/list/${party.id}: ",party.id)
+    const hasCurrencyOrGold = categories.find((c) =>
+      ["currency", "gold"].includes(c.name.toLowerCase())
+    );
+
+    let url = "";
+
+    if (hasCurrencyOrGold) {
+      url =
+        party.type === "party"
+          ? `/ledger/1/party/${party.id}`
+          : `/ledger/all/list/${party.id}`;
+    } else {
+      url =
+        party.type === "supplier"
+          ? `/ledger/purchase/list/${party.id}`
+          : `/ledger/sale/list/${party.id}`;
+    }
+
+    console.log("Navigate to:", url);
+
+    navigate(url);
   };
 
   const handleView = (party: Party) => {

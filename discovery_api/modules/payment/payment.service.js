@@ -206,6 +206,7 @@ export const createPayment = async (req) => {
         "payment_in",
         "advance_received",
         "payable",
+        "receivable",
         "advance_payment_deduct",
         "capital_in",
         "discount_sale",
@@ -319,7 +320,7 @@ export const getPaymentById = async (id) => {
 
 // Update Payment
 export const updatePayment = async (req) => {
-  console.log("paymentData: ", req.body);
+  
   const existingPayment = await Payment.findByPk(req.body.id, {
     include: [{ model: Invoice, as: "invoice" }],
   });
@@ -347,7 +348,7 @@ export const updatePayment = async (req) => {
       discount_sale: "DCS",
       discount_purchase: "DCP",
       premium_received: "PMR",
-      premium_paid: "PMR",
+      premium_paid: "PMP",
       deposit: "DEP",
       withdraw: "WDR",
       payable: "PAY",
@@ -364,10 +365,13 @@ export const updatePayment = async (req) => {
     // Update payment
     const updatedPayment = await existingPayment.update(req.body, { transaction: t });
 
+    
+
     if (
       [
         "payment_in",
         "payable",
+        "receivable",
         "advance_received",
         "advance_payment_deduct",
         "capital_in",
@@ -422,44 +426,57 @@ export const updatePayment = async (req) => {
       }
 
       // Ledger entry
-      const ledger = await Ledger.findOne({
+      let ledger = await Ledger.findOne({
         where: { paymentId: req.body.id },
         transaction: t,
         lock: t.LOCK.UPDATE,
       });
 
-      if (!ledger) {
-        throw { status: 404, message: "Ledger entry not found" };
+      if (ledger == null) {
+        ledger = await Ledger.create(
+          {
+            businessId: req.body.businessId,
+            categoryId: req.body.categoryId > 0 ? req.body.categoryId : null,
+            transactionType: req.body.paymentType,
+            partyId: req.body.partyId,
+            date: req.body.paymentDate,
+            paymentId: updatedPayment.id,
+            invoiceId: req.body.invoiceId ?? null,
+            bankId: req.body.bankId ?? null,
+            description: req.body.note ?? "",
+            currency: req.body.currency,
+            debit: debitAmount,
+            credit: creditAmount,
+            createdBy: req.body.createdBy,
+          },
+          { transaction: t }
+        );
+
+        
+      } else {
+
+        console.log("ledger-", ledger)
+        await ledger.update(
+          {
+            businessId: req.body.businessId,
+            categoryId: req.body.categoryId > 0 ? req.body.categoryId : null,
+            transactionType: req.body.paymentType,
+            partyId: req.body.partyId,
+            date: req.body.paymentDate,
+            paymentId: updatedPayment.id,
+            invoiceId: req.body.invoiceId ?? null,
+            description: req.body.note ?? "",
+            bankId: req.body.bankId ?? null,
+            currency: req.body.currency,
+            debit: debitAmount,
+            credit: creditAmount,
+            updatedBy: req.body.updatedBy,
+          },
+          { transaction: t }
+        );
       }
 
-      if (req.body.invoiceId){
-        const invoice = req.body.invoiceId
-          ? await Invoice.findByPk(req.body.invoiceId)
-          : null;
-        const invoiceNo = invoice
-          ? `${invoice.prefix}-${String(invoice.id).padStart(6, "0")}`
-          : "";
-      }
-
-      await ledger.update(
-        {
-          businessId: req.body.businessId,
-          categoryId: req.body.categoryId > 0 ? req.body.categoryId : null,
-          transactionType: req.body.paymentType,
-          partyId: req.body.partyId,
-          date: req.body.paymentDate,
-          paymentId: updatedPayment.id,
-          invoiceId: req.body.invoiceId ?? null,
-          description: req.body.note ?? "", // if note empty, leave blank
-          bankId: req.body.bankId ?? null,
-          currency: req.body.currency,
-          debit: debitAmount,
-          credit: creditAmount,
-          createdBy: req.body.createdBy,
-          updatedBy: req.body.updatedBy,
-        },
-        { transaction: t }
-      );
+      
     }
 
     await t.commit();
