@@ -18,6 +18,7 @@ import { paymentSchema } from "../modules/payment/payment.validator.js";
 import { stockSchema } from "../modules/stock/stock.validator.js";
 import { warehouseSchema } from "../modules/warehouse/warehouse.validator.js";
 import { bankSchema } from "../modules/bank/bank.validator.js";
+import { goldPriceInSchema } from "../modules/goldPriceIn/goldPriceIn.validator.js";
 
 import * as BusinessController from "../modules/business/business.controller.js";
 import * as UserController from "../modules/user/user.controller.js";
@@ -37,6 +38,7 @@ import * as StockController from "../modules/stock/stock.controller.js";
 import * as WarehouseController from "../modules/warehouse/warehouse.controller.js";
 import * as BankController from "../modules/bank/bank.controller.js";
 import * as LedgerController from "../modules/ledger/ledger.controller.js";
+import * as GoldPriceInController from "../modules/goldPriceIn/goldPriceIn.controller.js";
 
 const router = Router();
 
@@ -174,6 +176,14 @@ router.post("/stock/create", authorize("create_stock"), validate(stockSchema), S
 router.get("/stock/:id/view", authorize("view_stock"), StockController.getStockById);
 router.put("/stock/update", authorize("edit_stock"), validate(stockSchema), StockController.updateStock);
 router.post("/stock/:id/delete", authorize("delete_stock"), StockController.deleteStock);
+
+/*---Gold Price In---*/
+router.get("/gold-price-in/list", GoldPriceInController.getAllGoldPriceIn);
+router.get("/gold-price-in/latest", GoldPriceInController.getLatestGoldPriceIn);
+router.post("/gold-price-in/create", validate(goldPriceInSchema), GoldPriceInController.createGoldPriceIn);
+router.get("/gold-price-in/:id/view", GoldPriceInController.getGoldPriceInById);
+router.put("/gold-price-in/update", validate(goldPriceInSchema), GoldPriceInController.updateGoldPriceIn);
+router.post("/gold-price-in/:id/delete", GoldPriceInController.deleteGoldPriceIn);
 
 /*---Currency ledger---*/
 router.get("/ledger/list", authorize(["manage_ledger", "currency_ledger"]), LedgerController.getAllLedger);
