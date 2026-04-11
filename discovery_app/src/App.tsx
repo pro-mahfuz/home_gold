@@ -86,6 +86,7 @@ import ResetPassword from "./modules/auth/pages/ResetPassword";
 import ForgotPassword from "./modules/auth/pages/ForgotPassword";
 import PaymentSys2View from "./modules/payment/pages/PaymentSys2View";
 import BillView from "./modules/bill/pages/BillView";
+import GoldPriceInList from "./modules/goldPriceIn/pages/GoldPriceInList";
 
 
 export default function App() {
@@ -539,6 +540,13 @@ export default function App() {
               <PrivateRoute permissions={['manage_status']}>
                 <StatusList />
               </PrivateRoute>} 
+            />
+
+            {/* Gold Price In */}
+            <Route index path="/gold-price-in/list" element={
+              <PrivateRoute permissions={['manage_dashboard']}>
+                <GoldPriceInList />
+              </PrivateRoute>}
             />
 
             {/* Sale for System 2 */}

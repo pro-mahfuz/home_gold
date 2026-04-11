@@ -153,15 +153,24 @@ const AppHeader: React.FC = () => {
         <div
           className={`${
             isApplicationMenuOpen ? "flex" : "hidden"
-          } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
+          } items-center justify-between w-full gap-4 px-5 py-4 lg:flex lg:flex-1 shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
         >
           {/* <div className="flex items-center gap-2 2xsm:gap-3">
             <ThemeToggleButton />
             <NotificationDropdown />
           </div> */}
 
-          {/* <!-- User Area --> */}
-          <UserDropdown />
+          <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center lg:justify-end">
+            <Link
+              to="/gold-price-in/list"
+              className="inline-flex items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+            >
+              Gold Price In
+            </Link>
+
+            {/* <!-- User Area --> */}
+            <UserDropdown />
+          </div>
         </div>
       </div>
     </header>

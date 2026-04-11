@@ -163,6 +163,12 @@ const AppSidebar: React.FC<any> = () => {
       ],
     },
     {
+      name: "Gold Price In",
+      icon: <ListIcon />,
+      path: "/gold-price-in/list",
+      permission: "manage_dashboard",
+    },
+    {
       name: "Payments",
       icon: <ListIcon />,
       permission:"manage_payment",

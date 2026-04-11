@@ -17,6 +17,7 @@ import warehouseReducer from "../modules/warehouse/features/warehouseSlice";
 import bankReducer from "../modules/account/features/accountSlice";
 import stockReducer from "../modules/stock/features/stockSlice";
 import ledgerReducer from "../modules/ledger/features/ledgerSlice";
+import goldPriceInReducer from "../modules/goldPriceIn/features/goldPriceInSlice";
 
 export const store = configureStore({
   reducer: {
@@ -37,6 +38,7 @@ export const store = configureStore({
     bank: bankReducer,
     stock: stockReducer,
     ledger: ledgerReducer,
+    goldPriceIn: goldPriceInReducer,
     // other slices...
   },
 });
