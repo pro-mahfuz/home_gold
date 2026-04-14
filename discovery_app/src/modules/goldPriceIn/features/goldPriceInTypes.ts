@@ -9,7 +9,7 @@ export interface GoldPriceIn {
   ounceGram?: NumericValue;
   "999_rateGram"?: NumericValue;
   "995_rateGram"?: NumericValue;
-  "992_rateGram"?: NumericValue;
+  "920_rateGram"?: NumericValue;
   buyRate?: NumericValue;
   sellRate?: NumericValue;
   carretRate?: NumericValue;

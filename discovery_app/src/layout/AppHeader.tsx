@@ -81,6 +81,13 @@ const AppHeader: React.FC = () => {
             {/* Cross Icon */}
           </button>
 
+          <Link
+              to="/gold-price-in/list"
+              className="inline-flex items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
+            >
+              Gold Price In
+            </Link>
+
           <Link to="/" className="lg:hidden">
             <img
               className="dark:hidden"
@@ -161,12 +168,7 @@ const AppHeader: React.FC = () => {
           </div> */}
 
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:items-center lg:justify-end">
-            <Link
-              to="/gold-price-in/list"
-              className="inline-flex items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600"
-            >
-              Gold Price In
-            </Link>
+            
 
             {/* <!-- User Area --> */}
             <UserDropdown />
