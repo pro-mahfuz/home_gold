@@ -13,6 +13,14 @@ export const getAllBusiness = async () => {
 }
 
 export const createBusiness = async (req) => {
+    if (typeof req.body.currencyRates === "string") {
+        try {
+            req.body.currencyRates = JSON.parse(req.body.currencyRates);
+        } catch {
+            req.body.currencyRates = null;
+        }
+    }
+
     if (req.files) {
         if (req.files.businessLogo) {
             req.body.businessLogo = `/${req.files.businessLogo[0].path.replace(/\\/g, "/")}`;
@@ -41,6 +49,14 @@ export const updateBusiness = async (req) => {
 
     if (!data) {
         throw { status: 404, message: "Business not found" };
+    }
+
+    if (typeof req.body.currencyRates === "string") {
+        try {
+            req.body.currencyRates = JSON.parse(req.body.currencyRates);
+        } catch {
+            req.body.currencyRates = null;
+        }
     }
 
     if (req.files) {

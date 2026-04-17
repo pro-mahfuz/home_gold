@@ -8,6 +8,8 @@ export const businessSchema = yup.object({
   phoneCode: yup.string().required("phoneCode is required"),
   phoneNumber: yup.string().required("phoneNumber is required"),
   // vatPercentage: yup.number().required("VAT Percentage is required"),
+  baseCurrency: yup.string().nullable(),
+  currencyRates: yup.mixed().nullable(),
   address: yup.string().required(),
   city: yup.string().required("City is required"),
   country: yup.string().required("Country is required"),

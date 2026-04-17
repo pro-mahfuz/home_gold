@@ -12,6 +12,8 @@ export interface Business {
   phoneNumber?: string;
   trnNo?: string;
   vatPercentage: number;
+  baseCurrency?: string;
+  currencyRates?: Record<string, string> | null;
   address?: string;
   city?: string;
   country?: string;

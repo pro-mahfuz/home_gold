@@ -1,6 +1,226 @@
 import { Invoice, InvoiceItem, User, Payment, Item, Container, Warehouse, Stock, Ledger, Category, Party, sequelize } from "../../models/model.js";
 import { fn, col, Op, Sequelize } from "sequelize";
 
+const AUTO_PURCHASE_STOCK_TYPES = ["fix_purchase", "unfix_purchase", "wholesale_purchase"];
+const AUTO_STOCK_MANAGED_TYPES = ["sale", ...AUTO_PURCHASE_STOCK_TYPES];
+const STOCK_PREFIX_MAP = {
+  stock_in: "STI",
+  stock_out: "STO",
+  stock_adj: "STA",
+};
+const INVOICE_PAYMENT_CONFIG = {
+  wholesale_purchase: {
+    paymentType: "payment_out",
+    prefix: "PMO",
+    description: "Paid Payment",
+    debit: true,
+  },
+  wholesale_sale: {
+    paymentType: "payment_in",
+    prefix: "PMI",
+    description: "Received Payment",
+    debit: false,
+  },
+};
+const STOCK_LEDGER_CATEGORY_NAMES = ["currency", "gold"];
+const MANDATORY_WHOLESALE_PAID_TYPES = ["wholesale_purchase", "wholesale_sale"];
+
+const requiresMandatoryWholesalePaidFields = (invoiceType) =>
+  MANDATORY_WHOLESALE_PAID_TYPES.includes(invoiceType?.toLowerCase());
+
+const ensureMandatoryWholesalePaidFields = ({ invoiceType, isFullPaid, bankId }) => {
+  if (!requiresMandatoryWholesalePaidFields(invoiceType)) {
+    return;
+  }
+
+  if (isFullPaid !== true) {
+    throw {
+      status: 400,
+      message: "Is Full Paid is mandatory for wholesale purchase and wholesale sale invoices.",
+    };
+  }
+
+  if (!(Number(bankId) > 0)) {
+    throw {
+      status: 400,
+      message: "Paid Account is mandatory for wholesale purchase and wholesale sale invoices.",
+    };
+  }
+};
+
+const shouldCreatePurchaseStockLedger = (invoiceType, categoryName) => {
+  const normalizedType = invoiceType?.toLowerCase();
+  const normalizedCategory = categoryName?.toLowerCase();
+  const isStockLedgerCategory = STOCK_LEDGER_CATEGORY_NAMES.includes(normalizedCategory);
+
+  if (normalizedType === "wholesale_purchase") {
+    return true;
+  }
+
+  return !isStockLedgerCategory;
+};
+
+const createAutoStockEntries = async ({
+  invoice,
+  items,
+  movementType,
+  transaction,
+  updatedBy = null,
+  createLedgerEntry = true,
+}) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  const prefix = STOCK_PREFIX_MAP[movementType] || "";
+  const isStockIn = movementType === "stock_in";
+
+  return Promise.all(
+    items.map(async (item) => {
+      const stock = await Stock.create(
+        {
+          businessId: invoice.businessId,
+          date: invoice.date,
+          prefix,
+          invoiceType: invoice.invoiceType,
+          invoiceId: invoice.id,
+          partyId: invoice.partyId,
+          categoryId: invoice.categoryId,
+          itemId: item.itemId,
+          containerId: item.containerId ?? null,
+          movementType,
+          warehouseId: item.warehouseId ?? null,
+          bankId: null,
+          quantity: item.quantity,
+          unit: item.unit,
+          createdBy: invoice.createdBy,
+          updatedBy,
+        },
+        { transaction }
+      );
+
+      if (createLedgerEntry) {
+        await Ledger.create(
+          {
+            businessId: invoice.businessId,
+            categoryId: invoice.categoryId,
+            transactionType: movementType,
+            partyId: invoice.partyId,
+            date: invoice.date,
+            invoiceId: invoice.id,
+            stockId: stock.id,
+            description: `${item.name} x${item.quantity}${invoice.note ? ` | Note: ${invoice.note}` : ""}`,
+            currency: null,
+            stockCurrency: item.name ?? null,
+            debitQty: isStockIn ? item.quantity : 0,
+            creditQty: isStockIn ? 0 : item.quantity,
+            createdBy: invoice.createdBy,
+            updatedBy,
+          },
+          { transaction }
+        );
+      }
+
+      return stock;
+    })
+  );
+};
+
+const syncInvoiceAutoPayment = async ({
+  invoice,
+  paidTotal,
+  isFullPaid = false,
+  bankId,
+  transaction,
+  updatedBy = null,
+}) => {
+  const type = invoice.invoiceType?.toLowerCase();
+  const paymentConfig = INVOICE_PAYMENT_CONFIG[type];
+  if (!paymentConfig) {
+    return null;
+  }
+
+  const existingPayment = await Payment.findOne({
+    where: {
+      invoiceId: invoice.id,
+      paymentType: paymentConfig.paymentType,
+    },
+    transaction,
+  });
+
+  const invoiceFinalAmount = Math.max(
+    0,
+    (Number(invoice.grandTotal) || 0) - (Number(invoice.discount) || 0)
+  );
+  const normalizedPaidTotal =
+    Number(paidTotal) > 0
+      ? Number(paidTotal)
+      : isFullPaid
+        ? invoiceFinalAmount
+        : 0;
+  const normalizedBankId = Number(bankId) > 0 ? Number(bankId) : null;
+
+  if (invoice.system !== 1 || normalizedPaidTotal <= 0) {
+    if (existingPayment) {
+      await Ledger.destroy({
+        where: { paymentId: existingPayment.id },
+        transaction,
+      });
+      await existingPayment.destroy({ transaction });
+    }
+    return null;
+  }
+
+  const paymentPayload = {
+    businessId: invoice.businessId,
+    partyId: invoice.partyId,
+    categoryId: invoice.categoryId,
+    prefix: paymentConfig.prefix,
+    paymentType: paymentConfig.paymentType,
+    invoiceId: invoice.id,
+    paymentDate: invoice.date,
+    currency: invoice.currency,
+    amountPaid: normalizedPaidTotal,
+    bankId: normalizedBankId,
+    createdBy: invoice.createdBy,
+    updatedBy,
+  };
+
+  const payment = existingPayment
+    ? await existingPayment.update(paymentPayload, { transaction })
+    : await Payment.create(paymentPayload, { transaction });
+
+  const ledgerPayload = {
+    businessId: invoice.businessId,
+    categoryId: invoice.categoryId,
+    transactionType: paymentConfig.paymentType,
+    partyId: invoice.partyId,
+    date: invoice.date,
+    paymentId: payment.id,
+    invoiceId: invoice.id,
+    bankId: normalizedBankId,
+    description: paymentConfig.description,
+    currency: invoice.currency,
+    debit: paymentConfig.debit ? normalizedPaidTotal : 0,
+    credit: paymentConfig.debit ? 0 : normalizedPaidTotal,
+    createdBy: invoice.createdBy,
+    updatedBy,
+  };
+
+  const existingLedger = await Ledger.findOne({
+    where: { paymentId: payment.id },
+    transaction,
+  });
+
+  if (existingLedger) {
+    await existingLedger.update(ledgerPayload, { transaction });
+  } else {
+    await Ledger.create(ledgerPayload, { transaction });
+  }
+
+  return payment;
+};
+
 export const getAllInvoice = async () => {
   const invoices = await Invoice.findAll({
     include: [
@@ -1030,6 +1250,13 @@ export const getContainerExpenseReport = async () => {
 
 export const createInvoice = async (req) => {
   const { items, ...invoiceData } = req.body;
+  const requestedType = invoiceData.invoiceType?.toLowerCase();
+
+  ensureMandatoryWholesalePaidFields({
+    invoiceType: requestedType,
+    isFullPaid: req.body.isFullPaid,
+    bankId: req.body.bankId,
+  });
 
   const t = await sequelize.transaction();
   try {
@@ -1142,6 +1369,16 @@ export const createInvoice = async (req) => {
     }
     
     
+    if (invoice.system === 1 && AUTO_PURCHASE_STOCK_TYPES.includes(type)) {
+      await createAutoStockEntries({
+        invoice,
+        items,
+        movementType: "stock_in",
+        transaction: t,
+        createLedgerEntry: shouldCreatePurchaseStockLedger(type, category?.name),
+      });
+    }
+
     if (category?.name && !["currency", "gold"].includes(category.name.toLowerCase())) {
       if ( invoice.invoiceType === "sale" && invoice.system === 1) {
         await Promise.all(
@@ -1219,6 +1456,14 @@ export const createInvoice = async (req) => {
       }
     }
 
+    await syncInvoiceAutoPayment({
+      invoice,
+      paidTotal: req.body.paidTotal,
+      isFullPaid: req.body.isFullPaid,
+      bankId: req.body.bankId,
+      transaction: t,
+    });
+
     await t.commit();
 
     // Fetch and return invoice with items
@@ -1267,9 +1512,16 @@ export const getInvoiceById = async (id) => {
 export const updateInvoice = async (req) => {
     const { id } = req.body;
     const { items, ...invoiceData } = req.body;
+    const requestedType = invoiceData.invoiceType?.toLowerCase();
     
     // Mapping Invoice Prefix
     invoiceData.prefix = invoicePrefixMapping(invoiceData);
+
+    ensureMandatoryWholesalePaidFields({
+      invoiceType: requestedType,
+      isFullPaid: req.body.isFullPaid,
+      bankId: req.body.bankId,
+    });
 
     return sequelize.transaction(async (t) => {
     
@@ -1279,11 +1531,20 @@ export const updateInvoice = async (req) => {
           throw { status: 404, message: 'Invoice not found' };
         }
 
+        const previousInvoiceType = invoice.invoiceType?.toLowerCase();
+
         // Step 2: Update invoice
         const updatedInvoice = await invoice.update(invoiceData, { transaction: t });
+        const nextInvoiceType = updatedInvoice.invoiceType?.toLowerCase();
 
         // Step 3: Remove old items and stocks
         await InvoiceItem.destroy({ where: { invoiceId: id }, transaction: t });
+        if (
+          AUTO_STOCK_MANAGED_TYPES.includes(previousInvoiceType) ||
+          AUTO_STOCK_MANAGED_TYPES.includes(nextInvoiceType)
+        ) {
+          await Stock.destroy({ where: { invoiceId: id }, transaction: t });
+        }
 
         // Step 4: Re-create Invoice Items and Stocks
         if (items && Array.isArray(items)) {
@@ -1382,14 +1643,20 @@ export const updateInvoice = async (req) => {
         );
 
 
+        if (updatedInvoice.system === 1 && AUTO_PURCHASE_STOCK_TYPES.includes(nextInvoiceType)) {
+          await createAutoStockEntries({
+            invoice: updatedInvoice,
+            items,
+            movementType: "stock_in",
+            transaction: t,
+            updatedBy: updatedInvoice.updatedBy,
+            createLedgerEntry: shouldCreatePurchaseStockLedger(nextInvoiceType, category?.name),
+          });
+        }
+
         if (category?.name && !["currency", "gold"].includes(category.name.toLowerCase())) {
           // Create Stock Automatically if making sale
           if ( invoice.invoiceType === "sale") {
-            await Stock.destroy({
-              where: { invoiceId: invoice.id },
-              transaction: t,
-            });
-
             await Promise.all(
               items.map(async (item) =>{
                 const prefixMap = {
@@ -1509,6 +1776,15 @@ export const updateInvoice = async (req) => {
             }
           }
         }
+
+        await syncInvoiceAutoPayment({
+          invoice: updatedInvoice,
+          paidTotal: req.body.paidTotal,
+          isFullPaid: req.body.isFullPaid,
+          bankId: req.body.bankId,
+          transaction: t,
+          updatedBy: updatedInvoice.updatedBy,
+        });
 
         // Step 5: Return updated invoice with its items
         const updatedInvoiceWithItems = await Invoice.findByPk(invoice.id, {

@@ -53,6 +53,8 @@ import { selectAllItemByBusiness } from "../../item/features/itemSelectors.ts";
 import { fetchAllItem } from "../../item/features/itemThunks.ts";
 import { fetchParty } from "../../party/features/partyThunks.ts";
 
+const MANDATORY_WHOLESALE_PAID_TYPES = ["wholesale_purchase", "wholesale_sale"];
+
 export default function InvoiceEditForm() {
     const { id } = useParams();
 
@@ -165,9 +167,28 @@ export default function InvoiceEditForm() {
     }, [user, invoice]);
 
     const categoryItem = useSelector(selectCategoryById(Number(formData.categoryId)));
+    const normalizedInvoiceType = formData.invoiceType?.toLowerCase() ?? "";
+    const isMandatoryWholesalePaidType = MANDATORY_WHOLESALE_PAID_TYPES.includes(normalizedInvoiceType);
+    const supportsInvoicePayment = ["sale", "wholesale_purchase", "wholesale_sale"].includes(normalizedInvoiceType);
+    const paymentActionLabel = isMandatoryWholesalePaidType ? "Paid" : "Received";
+    const paymentCheckboxLabel = isMandatoryWholesalePaidType ? "Is Full Paid" : "Is Full Received";
+    const getFinalInvoiceAmount = (grandTotal: number, discount: number | null | undefined) =>
+        Math.max(0, (grandTotal ?? 0) - (discount ?? 0));
     const containers = useSelector(selectAllContainer);
     const warehouses = useSelector(selectAllWarehouse);
     const paymentAccounts = useSelector(selectAllAccount);
+
+    useEffect(() => {
+        if (!formData.isFullPaid) return;
+
+        const finalAmount = getFinalInvoiceAmount(formData.grandTotal ?? 0, formData.discount);
+        if ((formData.paidTotal ?? 0) === finalAmount) return;
+
+        setFormData((prev) => ({
+            ...prev,
+            paidTotal: finalAmount,
+        }));
+    }, [formData.isFullPaid, formData.grandTotal, formData.discount]);
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -280,10 +301,11 @@ export default function InvoiceEditForm() {
     };
 
     const handleFullPaidChange = (isfullPaid: boolean) => {
+        const finalAmount = getFinalInvoiceAmount(formData.grandTotal ?? 0, formData.discount);
         
         setFormData(prev => ({
             ...prev,
-            paidTotal : isfullPaid ? formData.grandTotal : null,
+            paidTotal : isfullPaid ? finalAmount : null,
             isFullPaid : isfullPaid
         }));
         
@@ -293,8 +315,26 @@ export default function InvoiceEditForm() {
         e.preventDefault();
         setLoading(true); // start loading
         try {
-            console.log("formData: ", formData);
-            await dispatch(update(formData));
+            if (isMandatoryWholesalePaidType && !formData.isFullPaid) {
+                toast.error("Is Full Paid is mandatory for wholesale purchase and wholesale sale invoices.");
+                setLoading(false);
+                return;
+            }
+
+            if (isMandatoryWholesalePaidType && !(Number(formData.bankId) > 0)) {
+                toast.error("Paid Account is mandatory for wholesale purchase and wholesale sale invoices.");
+                setLoading(false);
+                return;
+            }
+
+            const payload: Invoice = { ...formData };
+            if (isMandatoryWholesalePaidType) {
+                payload.paidTotal = getFinalInvoiceAmount(formData.grandTotal ?? 0, formData.discount);
+                payload.isFullPaid = true;
+            }
+
+            console.log("formData: ", payload);
+            await dispatch(update(payload));
             toast.success("Invoice updated successfully!");
             //const categoryId = 0;
             const saleTypes = ["sale", "fix_sale", "unfix_sale", "wholesale_sale"];
@@ -969,14 +1009,14 @@ export default function InvoiceEditForm() {
                 <div></div>
                 <div></div>
                 <div></div>
-                { formData.invoiceType === "sale" && (
+                { supportsInvoicePayment && (
                 <>
                     {/* isFull Paid */}
                     <div className="flex items-center pt-5 pl-2">
                         <Checkbox className="justify-center"
                             key={`is-fullpaid-check-${formData.id}`}
                             id={`is-fullpaid-check`}
-                            label={`Is Full Received`}
+                            label={paymentCheckboxLabel}
                             checked={!!formData.isFullPaid}
                             onChange={handleFullPaidChange}
                         />
@@ -984,7 +1024,7 @@ export default function InvoiceEditForm() {
 
                     {/* Paid Amount */}
                     <div>
-                        <Label>Received Amount</Label>
+                        <Label>{paymentActionLabel} Amount</Label>
                         <Input
                             type="number"
                             name="paidTotal"
@@ -996,7 +1036,7 @@ export default function InvoiceEditForm() {
 
                     {/* Payment Account */}
                     <div>
-                        <Label>Received Account</Label>
+                        <Label>{paymentActionLabel} Account</Label>
                         <Select
                             options={
                             paymentAccounts

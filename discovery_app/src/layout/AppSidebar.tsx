@@ -269,16 +269,13 @@ const AppSidebar: React.FC<any> = () => {
       ],
     },
     {
-      name: "Payment Account",
+      name: "Settings",
       icon: <ListIcon />,
-      path: "/account/list",
-      permission:"manage_account"
-    },
-    {
-      name: "Status",
-      icon: <ListIcon />,
-      path: "/status/list",
-      permission:"manage_status"
+      subItems: [
+        { name: "Payment Account", path: "/account/list", permission: "manage_account" },
+        { name: "Status", path: "/status/list", permission: "manage_status" },
+        { name: "Base Currency", path: "/settings/base-currency", permission: "edit_business" },
+      ],
     },
     
   ];

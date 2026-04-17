@@ -17,6 +17,8 @@ export default (sequelize, DataTypes) => {
     phoneNumber: DataTypes.STRING,
     trnNo: DataTypes.STRING,
     vatPercentage: { type: DataTypes.FLOAT, defaultValue: 0 },
+    baseCurrency: { type: DataTypes.STRING, defaultValue: "AED" },
+    currencyRates: { type: DataTypes.JSON, allowNull: true },
     address: DataTypes.STRING,
     city: DataTypes.STRING,
     country: DataTypes.STRING,
