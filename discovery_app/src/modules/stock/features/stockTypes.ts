@@ -4,6 +4,7 @@ import { Item } from "../../item/features/itemTypes";
 import { Business } from "../../business/features/businessTypes";
 import { Account } from "../../account/features/accountTypes";
 import { Invoice } from "../../invoice/features/invoiceTypes";
+import { Party } from "../../party/features/partyTypes";
 
 export interface Stock {
   id?: number;
@@ -13,6 +14,7 @@ export interface Stock {
   warehouse?: Warehouse;
   bank?: Account;
   invoice?: Invoice;
+  party?: Party;
 
   businessId?: number;
   date: string;
@@ -23,6 +25,7 @@ export interface Stock {
   itemId: number;
   movementType: string;
   warehouseId?: number | null;
+  toWarehouseId?: number | null;
   bankId?: number | null;
   quantity: number;
 
@@ -38,6 +41,8 @@ export interface Stock {
 }
 
 export interface StockReport {
+  warehouseId?: number | null;
+  warehouse?: Warehouse;
   containerId: number;
   itemId: number;
   containerNo?: string;
@@ -48,6 +53,7 @@ export interface StockReport {
   totalIn: number;
   totalOut: number;
   totalDamaged: number;
+  availableQty?: number;
 }
 
 export interface StockState {

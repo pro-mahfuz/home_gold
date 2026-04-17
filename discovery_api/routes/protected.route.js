@@ -15,7 +15,7 @@ import { itemSchema } from "../modules/item/item.validator.js";
 import { containerSchema } from "../modules/container/container.validator.js";
 import { invoiceSchema } from "../modules/invoice/invoice.validator.js";
 import { paymentSchema } from "../modules/payment/payment.validator.js";
-import { stockSchema } from "../modules/stock/stock.validator.js";
+import { stockSchema, stockTransferSchema } from "../modules/stock/stock.validator.js";
 import { warehouseSchema } from "../modules/warehouse/warehouse.validator.js";
 import { bankSchema } from "../modules/bank/bank.validator.js";
 import { goldPriceInSchema } from "../modules/goldPriceIn/goldPriceIn.validator.js";
@@ -173,6 +173,7 @@ router.post("/account/:id/delete", authorize("delete_account"), BankController.d
 /*---Stock---*/
 router.get("/stock/list", authorize(["manage_stock", "report_stock"]), StockController.getAllStock);
 router.post("/stock/create", authorize("create_stock"), validate(stockSchema), StockController.createStock);
+router.post("/stock/transfer/create", authorize("create_stock"), validate(stockTransferSchema), StockController.createStockTransfer);
 router.get("/stock/:id/view", authorize("view_stock"), StockController.getStockById);
 router.put("/stock/update", authorize("edit_stock"), validate(stockSchema), StockController.updateStock);
 router.post("/stock/:id/delete", authorize("delete_stock"), StockController.deleteStock);
@@ -190,6 +191,7 @@ router.get("/ledger/list", authorize(["manage_ledger", "currency_ledger"]), Ledg
 
 /** Report */
 router.post("/stock/getStockReport", authorize("report_stock"), StockController.getStockReport);
+router.post("/stock/getOverallStockReport", authorize("report_stock"), StockController.getOverallStockReport);
 router.post("/invoice/getSaleReport", authorize(["report_sale", "report_sale_2"]), InvoiceController.getSaleReport);
 router.post("/invoice/getPurchaseReport", authorize("report_purchase"), InvoiceController.getPurchaseReport);
 router.post("/invoice/getSaleContainerReport", authorize("report_sale_container"), InvoiceController.getSaleContainerReport);

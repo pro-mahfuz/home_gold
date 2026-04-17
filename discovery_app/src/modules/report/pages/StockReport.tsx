@@ -36,6 +36,22 @@ export default function StockReport() {
   const status = useSelector(selectStockStatus);
   const stockReports = useSelector(selectStockReport);
   const categories = useSelector(selectAllCategory);
+  const positiveStocks = stockReports.filter(
+    (stock) =>
+      Number(stock.totalIn) - Number(stock.totalOut) - Number(stock.totalDamaged) > 0
+  );
+  const overall = stockReports.reduce(
+    (acc, stock) => {
+      acc.totalIn += Number(stock.totalIn) || 0;
+      acc.totalOut += Number(stock.totalOut) || 0;
+      acc.totalDamaged += Number(stock.totalDamaged) || 0;
+      acc.available +=
+        Number(stock.availableQty) ||
+        (Number(stock.totalIn) - Number(stock.totalOut) - Number(stock.totalDamaged));
+      return acc;
+    },
+    { totalIn: 0, totalOut: 0, totalDamaged: 0, available: 0 }
+  );
   
 
   return (
@@ -88,6 +104,25 @@ export default function StockReport() {
                   </div>
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Overall In</p>
+                  <p className="font-semibold">{overall.totalIn.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Overall Out</p>
+                  <p className="font-semibold">{overall.totalOut.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Overall Damaged</p>
+                  <p className="font-semibold">{overall.totalDamaged.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Overall Available</p>
+                  <p className="font-semibold">{overall.available.toFixed(2)}</p>
+                </div>
+              </div>
             
 
               <Table>
@@ -97,6 +132,7 @@ export default function StockReport() {
                     {!categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
                       <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Container</TableCell>
                     )}
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Warehouse</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Item</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Unit</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Stock In</TableCell>
@@ -109,18 +145,18 @@ export default function StockReport() {
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                   {status === 'loading' ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                      <TableCell colSpan={10} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                         Loading data...
                       </TableCell>
                     </TableRow>
                   ) : stockReports.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                      <TableCell colSpan={10} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                         No data found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    stockReports.filter(stock => Number(stock.totalIn) - Number(stock.totalOut) - Number(stock.totalDamaged) > 0).map((stock, index) => (
+                    positiveStocks.map((stock, index) => (
                       <TableRow key={index} className="border border-gray-500 dark:border-white/[0.05]">
                         <TableCell className="text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
                           {index + 1}
@@ -131,6 +167,9 @@ export default function StockReport() {
                               {stock.container?.containerNo}
                           </TableCell>
                         )}
+                        <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                          {stock.warehouse?.name ?? "-"}
+                        </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
                           {stock.item?.name}
@@ -147,7 +186,7 @@ export default function StockReport() {
                         </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
-                          {(stock.totalIn - stock.totalOut - stock.totalDamaged).toFixed(2)}
+                          {(stock.availableQty ?? (stock.totalIn - stock.totalOut - stock.totalDamaged)).toFixed(2)}
                         </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">

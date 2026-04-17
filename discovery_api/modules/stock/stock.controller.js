@@ -21,6 +21,25 @@ export const getStockReport = async (req, res, next) => {
     }
 }
 
+export const getOverallStockReport = async (req, res, next) => {
+    try {
+        const data = await StockService.getOverallStockReport();
+        return success(res, data, "Response successful");
+
+    } catch (err) {
+        return error(res, err.message, err.status || 500);
+    }
+}
+
+export const createStockTransfer = async (req, res, next) => {
+    try {
+        const data = await StockService.createStockTransfer(req);
+        return success(res, data, "Stock transfer created successfully", 201);
+    } catch (err) {
+        return error(res, err.message, err.status || 500);
+    }
+}
+
 export const createStock = async (req, res, next) => {
     try {
         const data = await StockService.createStock(req);

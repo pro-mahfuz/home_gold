@@ -27,8 +27,29 @@ export const getStockReport = async () => {
 
 export const create = async (createData: Stock) => {
   try {
+    const isTransfer = createData.movementType === "stock_transfer";
+    const payload = isTransfer
+      ? {
+          businessId: createData.businessId,
+          date: createData.date,
+          categoryId: createData.categoryId,
+          itemId: createData.itemId,
+          containerId: createData.containerId,
+          unit: createData.unit,
+          quantity: createData.quantity,
+          fromWarehouseId: createData.warehouseId,
+          toWarehouseId: createData.toWarehouseId,
+          partyId: createData.partyId,
+          createdBy: createData.createdBy,
+          updatedBy: createData.updatedBy,
+        }
+      : createData;
 
-    const res = await axiosInstance.post('protected/stock/create', createData);
+    const endpoint = isTransfer
+      ? "protected/stock/transfer/create"
+      : "protected/stock/create";
+
+    const res = await axiosInstance.post(endpoint, payload);
     return res.data.data;
 
   } catch {

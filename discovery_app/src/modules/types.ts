@@ -63,6 +63,7 @@ export const CurrencyOptions: OptionStringType[] = [
 export const MovementTypeOptions: OptionStringType[] = [
   { value: "stock_in", label: "Stock-In" },
   { value: "stock_out", label: "Stock-Out" },
+  { value: "stock_transfer", label: "Stock-Transfer" },
   { value: "damaged", label: "Damaged" },
   // { value: "saleReturn", label: "Return" },
   // { value: "damage", label: "Damaged" }

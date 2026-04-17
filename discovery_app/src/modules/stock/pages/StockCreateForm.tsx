@@ -25,6 +25,7 @@ import { fetchAllCategory } from "../../category/features/categoryThunks.ts";
 import { fetchAllAccount } from "../../account/features/accountThunks.ts";
 import { selectAllUnitByBusiness } from "../../unit/features/unitSelectors.ts";
 import { fetchAllUnit } from "../../unit/features/unitThunks.ts";
+import { fetchParty } from "../../party/features/partyThunks.ts";
 
 import { selectAuth } from "../../auth/features/authSelectors.ts";
 import { selectUserById } from "../../user/features/userSelectors.ts";
@@ -34,6 +35,7 @@ import { selectAllWarehouse } from "../../warehouse/features/warehouseSelectors.
 import { selectAllContainer } from "../../container/features/containerSelectors";
 import { selectAllCategory } from "../../category/features/categorySelectors";
 import { selectAllAccount } from "../../account/features/accountSelectors.ts";
+import { selectAllParties } from "../../party/features/partySelectors.ts";
 
 
 export default function StockCreateForm() {
@@ -50,6 +52,7 @@ export default function StockCreateForm() {
         dispatch(fetchAllItem());
         dispatch(fetchAllAccount());
         dispatch(fetchAllUnit());
+        dispatch(fetchParty({ type: "all" }));
     }, [dispatch]);
 
     const authUser = useSelector(selectAuth);
@@ -63,6 +66,7 @@ export default function StockCreateForm() {
     const categories = useSelector(selectAllCategory);
     const paymentAccounts = useSelector(selectAllAccount);
     const UnitOptions = useSelector(selectAllUnitByBusiness(Number(user?.business?.id)));
+    const parties = useSelector(selectAllParties);
 
     
 
@@ -71,12 +75,13 @@ export default function StockCreateForm() {
         date: '',
         invoiceType: undefined,        
         invoiceId: undefined,
-        partyId: 0,
+        partyId: undefined,
         categoryId: 0,
         itemId: 0,
         containerId: null,
         movementType: '',
         warehouseId: null,
+        toWarehouseId: null,
         bankId: null,
         quantity: 0,
         unit: ''
@@ -106,6 +111,14 @@ export default function StockCreateForm() {
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+
+        if (formData.movementType === "stock_transfer") {
+            if (!(Number(formData.warehouseId) > 0)) {
+                toast.error("Please select From Warehouse for stock transfer.");
+                return;
+            }
+            
+        }
        
         try {
             // Dispatch create action, including totalAmount
@@ -164,15 +177,50 @@ export default function StockCreateForm() {
                             partyId: i.partyId
                         }))}
                         placeholder="Select invoice type"
+                        isClearable
 
                         onChange={(selectedOption) => {
+                            if (!selectedOption) {
+                                setFormData(prev => ({
+                                    ...prev,
+                                    invoiceId: undefined,
+                                    invoiceType: undefined,
+                                }));
+                                return;
+                            }
+
                             setFormData(prev => ({
                                 ...prev,
-                                invoiceId: Number(selectedOption!.value),
+                                invoiceId: Number(selectedOption.value),
                                 invoiceType: selectedOption?.invoiceType,
-                                categoryId: Number(selectedOption?.categoryId),
-                                partyId: Number(selectedOption?.partyId)
+                                categoryId: Number(selectedOption?.categoryId) || prev.categoryId,
+                                partyId: selectedOption?.partyId ? Number(selectedOption.partyId) : prev.partyId
                                 
+                            }));
+                        }}
+                        styles={selectStyles}
+                        classNamePrefix="react-select"
+                    />
+                </div>
+
+                <div>
+                    <Label>Select Party (Optional)</Label>
+                    <Select
+                        options={parties.map((p) => ({
+                            label: `${p.name}`,
+                            value: p.id,
+                        }))}
+                        placeholder="Select party"
+                        isClearable
+                        value={
+                            parties
+                                .filter((p) => p.id === formData.partyId)
+                                .map((p) => ({ label: p.name, value: p.id }))[0] || null
+                        }
+                        onChange={(selectedOption) => {
+                            setFormData((prev) => ({
+                                ...prev,
+                                partyId: selectedOption?.value,
                             }));
                         }}
                         styles={selectStyles}
@@ -314,7 +362,42 @@ export default function StockCreateForm() {
                     />
                 </div>
 
-                { categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() != "currency" && (
+                { formData.movementType === "stock_transfer" && (
+                    <>
+                        <div>
+                            <Label>Select From Warehouse</Label>
+                            <Select
+                                options={
+                                warehouses
+                                    .map((w) => ({
+                                        label: `${w.name}`,
+                                        value: w.id,
+                                    })) || []
+                                }
+                                placeholder="Search and select warehouse"
+                                value={
+                                    warehouses
+                                    ?.filter((w) => w.id === formData.warehouseId)
+                                    .map((w) => ({ label: w.name, value: w.id }))[0] || null
+                                }
+                                onChange={(selectedOption) =>
+                                    setFormData((prev) => ({
+                                        ...prev,
+                                        warehouseId: selectedOption?.value ?? null,
+                                    }))
+                                }
+                                isClearable
+                                styles={selectStyles}
+                                classNamePrefix="react-select"
+                                required
+                            />
+                        </div>
+
+                        
+                    </>
+                )}
+
+                { formData.movementType !== "stock_transfer" && categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() != "currency" && (
                     <div>
                         <Label>Select Warehouse</Label>
                         <Select
@@ -345,7 +428,7 @@ export default function StockCreateForm() {
                     </div>
                 )}
 
-                {categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() === "currency" && (
+                {formData.movementType !== "stock_transfer" && categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() === "currency" && (
                     <div>
                         <Label>Select Stock Account</Label>
                         <Select

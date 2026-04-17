@@ -72,13 +72,15 @@ export default function StockList() {
       const itemName = i.item?.name ?? "";
       const containerNo = i.container?.containerNo ?? "";
       const stockRefNo = i.stockRefNo ?? "";
+      const partyName = i.party?.name ?? "";
 
       return (
         invoiceDate.toLowerCase().includes(search) ||
         invoiceNo.toLowerCase().includes(search) ||
         itemName.toLowerCase().includes(search) ||
         containerNo.toLowerCase().includes(search) ||
-        stockRefNo.toLowerCase().includes(search)
+        stockRefNo.toLowerCase().includes(search) ||
+        partyName.toLowerCase().includes(search)
       );
     });
   }, [stocks, filterText]);
@@ -193,6 +195,7 @@ export default function StockList() {
                     <TableCell isHeader className="border border-gray-500 text-center px-4 py-1">Unit</TableCell>
                   )}
 
+                  <TableCell isHeader className="border border-gray-500 text-center px-4 py-1">To Whom</TableCell>
                   <TableCell isHeader className="border border-gray-500 text-center px-4 py-1">Stock Account</TableCell>
                   <TableCell isHeader className="border border-gray-500 text-center px-4 py-1">Created By</TableCell>
                   <TableCell isHeader className="border border-gray-500 text-center px-4 py-1">Updated By</TableCell>
@@ -202,14 +205,14 @@ export default function StockList() {
 
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                 {status === 'loading' ? (
-                  <TableRow>
-                    <TableCell colSpan={12} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                    <TableRow>
+                    <TableCell colSpan={13} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                       Loading data...
                     </TableCell>
                   </TableRow>
                 ) : paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                    <TableCell colSpan={13} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                       No data found.
                     </TableCell>
                   </TableRow>
@@ -249,6 +252,9 @@ export default function StockList() {
                         {stock.unit ? stock.unit.toUpperCase() : ''}
                       </TableCell>
                       )}
+                      <TableCell className="border border-gray-500 text-center px-4 py-1 text-sm text-gray-500 dark:text-gray-400">
+                        {stock.party?.name ?? "-"}
+                      </TableCell>
                       <TableCell className="border border-gray-500 text-center px-4 py-1 text-sm text-gray-500 dark:text-gray-400">
                         {stock.warehouse?.name ?? stock.bank?.accountName}
                       </TableCell>
