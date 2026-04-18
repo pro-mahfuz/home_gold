@@ -140,10 +140,14 @@ export default function InvoiceCreateForm() {
 
     const categoryItem = useSelector(selectCategoryById(Number(formData.categoryId)));
     const normalizedInvoiceType = formData.invoiceType?.toLowerCase() ?? "";
+    const selectedCategoryName = categoryItem?.name?.toLowerCase() ?? "";
+    const isStockCategory = ["currency", "gold"].includes(selectedCategoryName);
     const isMandatoryWholesalePaidType = MANDATORY_WHOLESALE_PAID_TYPES.includes(normalizedInvoiceType);
     const supportsInvoicePayment = ["sale", "wholesale_purchase", "wholesale_sale"].includes(normalizedInvoiceType);
-    const paymentActionLabel = isMandatoryWholesalePaidType ? "Paid" : "Received";
-    const paymentCheckboxLabel = isMandatoryWholesalePaidType ? "Is Full Paid" : "Is Full Received";
+    const isSalePaymentType = ["sale", "wholesale_sale"].includes(normalizedInvoiceType);
+    const requiresWarehousePerItem = !isStockCategory && ["sale", "wholesale_sale"].includes(normalizedInvoiceType);
+    const paymentActionLabel = isSalePaymentType ? "Received" : "Paid";
+    const paymentCheckboxLabel = isSalePaymentType ? "Is Full Received" : "Is Full Paid";
     const getFinalInvoiceAmount = (grandTotal: number, discount: number | null | undefined) =>
         Math.max(0, (grandTotal ?? 0) - (discount ?? 0));
 
@@ -200,6 +204,12 @@ export default function InvoiceCreateForm() {
 
             if (isMandatoryWholesalePaidType && !(Number(formData.bankId) > 0)) {
                 toast.error("Paid Account is mandatory for wholesale purchase and wholesale sale invoices.");
+                setLoading(false);
+                return;
+            }
+
+            if (requiresWarehousePerItem && formData.items.some((item) => Number(item.itemId) > 0 && !(Number(item.warehouseId) > 0))) {
+                toast.error("Warehouse is mandatory for all wholesale sale items.");
                 setLoading(false);
                 return;
             }
@@ -658,14 +668,14 @@ export default function InvoiceCreateForm() {
                         <TableRow>
                             <TableCell isHeader className="text-center px-4 py-2">Sl</TableCell>
                             <TableCell isHeader className="text-center px-4 py-2">Item</TableCell>
-                            { !categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                            { !isStockCategory && (
                                 <TableCell isHeader className="text-center px-4 py-2">Container</TableCell>
                             )}
                             <TableCell isHeader className="text-center px-4 py-2">Quantity</TableCell>
                             <TableCell isHeader className="text-center px-4 py-2">Unit</TableCell>
                             <TableCell isHeader className="text-center px-4 py-2">Price</TableCell>
                             <TableCell isHeader className="text-center px-4 py-2">Sub-Total</TableCell>
-                            { !categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) )  && formData.invoiceType === "sale" && (
+                            { requiresWarehousePerItem && (
                             <TableCell isHeader className="text-center px-4 py-2">Warehouse</TableCell>
                             )}
                             <TableCell isHeader className="text-center px-4 py-2">Action</TableCell>
@@ -758,7 +768,7 @@ export default function InvoiceCreateForm() {
                                 />
                             </TableCell>
 
-                            { !categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                            { !isStockCategory && (
                                 <TableCell className="text-center px-4 py-2">
                                     <Select
                                         options={
@@ -891,7 +901,7 @@ export default function InvoiceCreateForm() {
 
                             <TableCell className="text-center px-4 py-2">{((item?.price ?? 0) * (item?.quantity ?? 0)).toFixed(2)}</TableCell>
 
-                            { !categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) )  && formData.invoiceType === "sale" && (
+                            { requiresWarehousePerItem && (
                                 <TableCell className="text-center px-4 py-2">
                                     <Select
                                         options={

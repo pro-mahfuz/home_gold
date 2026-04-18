@@ -15,7 +15,7 @@ export default (sequelize, DataTypes) => {
       allowNull: false,
     },
     invoiceType: {
-      type: DataTypes.STRING(20), // 'purchase' or 'sale'
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
     invoiceId: {
@@ -27,7 +27,7 @@ export default (sequelize, DataTypes) => {
       allowNull: true,
     },
     movementType: {
-      type: DataTypes.ENUM('stock_in', 'stock_out', 'damaged'),
+      type: DataTypes.ENUM('stock_in', 'stock_out', 'stock_transfer', 'stock_transfer_return', 'damaged'),
       allowNull: false,
     },
     prefix: {

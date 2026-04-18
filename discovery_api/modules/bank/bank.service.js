@@ -22,8 +22,8 @@ export const getBalanceStatement = async () => {
       bank.stocks?.reduce(
         (acc, stock) => {
           const qty = Number(stock.quantity) || 0;
-          if (stock.movementType === "stock_in") acc.stockInSum += qty;
-          else if (stock.movementType === "stock_out") acc.stockOutSum += qty;
+          if (["stock_in", "stock_transfer_return"].includes(stock.movementType)) acc.stockInSum += qty;
+          else if (["stock_out", "stock_transfer"].includes(stock.movementType)) acc.stockOutSum += qty;
           return acc;
         },
         { stockInSum: 0, stockOutSum: 0 }

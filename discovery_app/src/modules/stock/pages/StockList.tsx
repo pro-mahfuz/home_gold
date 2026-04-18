@@ -35,6 +35,7 @@ import {
 import { selectAllCategory } from "../../category/features/categorySelectors";
 import { fetchAllCategory } from "../../category/features/categoryThunks.ts";
 import { fetchAllStock, destroy } from "../features/stockThunks.ts";
+import { getMovementTypeLabel } from "../../types.ts";
 
 export default function StockList() {
   const navigate = useNavigate();
@@ -55,9 +56,7 @@ export default function StockList() {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
 
   useEffect(() => {
-    if(stocks.length === 0){
-      dispatch(fetchAllStock());
-    }
+    dispatch(fetchAllStock());
     dispatch(fetchAllCategory());
   }, [dispatch]);
 
@@ -125,6 +124,7 @@ export default function StockList() {
 
   const handleListRefresh = () => {
     setCurrentPage(1);
+    dispatch(fetchAllStock());
   };
 
   return (
@@ -229,7 +229,7 @@ export default function StockList() {
                         {stock.stockRefNo}
                       </TableCell>
                       <TableCell className="border border-gray-500 text-center px-4 py-1 text-sm text-gray-500 dark:text-gray-400">
-                        {stock.movementType}
+                        {getMovementTypeLabel(stock.movementType)}
                       </TableCell>
                       <TableCell className="border border-gray-500 text-center px-4 py-1 text-sm text-gray-500 dark:text-gray-400">
                         {stock.invoiceRefNo ? stock.invoiceRefNo : "-"}

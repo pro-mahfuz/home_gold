@@ -2,6 +2,12 @@ import { Ledger } from './ledgerTypes.ts';
 import { RootState } from "../../../store/store.ts";
 import { createSelector } from 'reselect';
 
+const compareLedgerAscending = (a: Ledger, b: Ledger) => {
+  const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+  if (dateDiff !== 0) return dateDiff;
+  return (a.id || 0) - (b.id || 0);
+};
+
 export const selectLedgerStatus = (state: RootState) => state.ledger.status;
 export const selectLedgerError = (state: RootState) => state.ledger.error;
 export const selectAllLedger = (state: RootState): Ledger[] => state.ledger.data || [];
@@ -20,9 +26,7 @@ export const selectLedgers = (
     });
 
     // Step 2: Sort by date (optional but important for running balance)
-    filteredLedgers = filteredLedgers.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    filteredLedgers = filteredLedgers.sort(compareLedgerAscending);
 
     return filteredLedgers;
   });
@@ -54,7 +58,9 @@ export const selectAccountLedgers = (
       })
 
     // Step 2: Compute running balance
-    const withBalance = filteredLedgers.map((l) => {
+    const sortedLedgers = [...filteredLedgers].sort(compareLedgerAscending);
+
+    const withBalance = sortedLedgers.map((l) => {
       const debit = Number(l.debit || 0);
       const credit = Number(l.credit || 0);
       const debitQty = Number(l.debitQty || 0);
@@ -90,8 +96,9 @@ const PURCHASE_TYPES = [
 const All_TYPES = [
   "purchase", "clearance_bill", "wholesale_purchase", "fix_purchase", "unfix_purchase", "stock_in", "payment_out", 
   "sale", "wholesale_sale", "fix_sale", "unfix_sale", "stock_out", "payment_in", "capital_in", "capital_out", 
+  "stock_transfer", "stock_transfer_return",
   "advance_received", "advance_payment_deduct", "advance_payment", "advance_received_deduct", "discount_sale", 
-  "discount_purchase", "premium_received", "premium_paid", "deposit", "withdraw"
+  "discount_purchase", "premium_received", "premium_paid", "deposit", "withdraw", "payable", "receivable", "bill_out"
 ];
 
 export const selectLedgerByPartyType = (
@@ -123,9 +130,7 @@ export const selectLedgerByPartyType = (
     });
 
     // Step 2: Sort by date (optional but important for running balance)
-    filteredLedgers = filteredLedgers.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    filteredLedgers = filteredLedgers.sort(compareLedgerAscending);
 
     // Step 3: Calculate cumulative running balance
     const withBalance = filteredLedgers.map((l) => {

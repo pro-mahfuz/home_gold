@@ -27,33 +27,34 @@ export const getStockReport = async () => {
 
 export const create = async (createData: Stock) => {
   try {
-    const isTransfer = createData.movementType === "stock_transfer";
-    const payload = isTransfer
+    const isTransferMovement = ["stock_transfer", "stock_transfer_return"].includes(createData.movementType);
+    const payload = isTransferMovement
       ? {
+          movementType: createData.movementType,
           businessId: createData.businessId,
           date: createData.date,
           categoryId: createData.categoryId,
+          invoiceId: createData.invoiceId,
           itemId: createData.itemId,
           containerId: createData.containerId,
           unit: createData.unit,
           quantity: createData.quantity,
-          fromWarehouseId: createData.warehouseId,
-          toWarehouseId: createData.toWarehouseId,
+          warehouseId: createData.warehouseId,
           partyId: createData.partyId,
           createdBy: createData.createdBy,
           updatedBy: createData.updatedBy,
         }
       : createData;
 
-    const endpoint = isTransfer
+    const endpoint = isTransferMovement
       ? "protected/stock/transfer/create"
       : "protected/stock/create";
 
     const res = await axiosInstance.post(endpoint, payload);
     return res.data.data;
 
-  } catch {
-    throw new Error('No data available');
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'No data available');
   }
 };
 

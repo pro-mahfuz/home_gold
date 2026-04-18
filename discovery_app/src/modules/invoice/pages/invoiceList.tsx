@@ -283,13 +283,13 @@ export default function InvoiceList() {
                       </TableCell>
                       <TableCell className="border border-gray-500 text-center px-1 py-1 text-sm text-gray-500 dark:text-gray-400">
                         {invoice.items.map((item, idx) => (
-                          <div className="text-green-700" key={idx}>{invoice.invoiceType === "sale" ? Number(item.stockOut) : Number(item.stockIn)}</div>
+                          <div className="text-green-700" key={idx}>{["sale", "wholesale_sale"].includes(invoice.invoiceType ?? "") ? Number(item.stockOut) : Number(item.stockIn)}</div>
                         ))}
                       </TableCell>
                       <TableCell className="border border-gray-500 text-center px-1 py-1 text-sm text-gray-500 dark:text-gray-400">
                         {invoice.items.map((item, idx) => (
                           <div className="text-red-500" key={idx}>{
-                            invoice.invoiceType === "sale" ?
+                            ["sale", "wholesale_sale"].includes(invoice.invoiceType ?? "") ?
                             Number(item.quantity) - Number(item.stockOut) > 0 ? Number(item.quantity) - Number(item.stockOut) : "-" :
                             Number(item.quantity) - Number(item.stockIn) > 0 ? Number(item.quantity) - Number(item.stockIn) : "-"
                           }</div>
@@ -324,13 +324,13 @@ export default function InvoiceList() {
                       </TableCell>
                       
                       <TableCell className="border border-gray-500 text-center px-1 py-1 text-sm text-green-700 dark:text-gray-400">
-                        {invoice.invoiceType === "sale" 
+                        {["sale", "wholesale_sale"].includes(invoice.invoiceType ?? "") 
                           ? Number(invoice.paymentInSum) > 0 ? invoice.paymentInSum?.toFixed(2) : '-'
                           : Number(invoice.paymentOutSum) > 0 ? invoice.paymentOutSum?.toFixed(2) : '-'
                         }
                       </TableCell>
                       <TableCell className="border border-gray-500 text-center px-1 py-1 text-sm text-red-500 dark:text-gray-400">
-                        {invoice.invoiceType === "sale" 
+                        {["sale", "wholesale_sale"].includes(invoice.invoiceType ?? "") 
                           ? Number(invoice.paymentInSum) - Number(invoice.grandTotal) != 0 ? (Number(invoice.paymentInSum) + Number(invoice.discount) - Number(invoice.grandTotal)).toFixed(2) : '-'
                           : Number(invoice.paymentOutSum) - Number(invoice.grandTotal) != 0 ? (Number(invoice.paymentOutSum) + Number(invoice.discount) - Number(invoice.grandTotal)).toFixed(2) : '-'
                         }

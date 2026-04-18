@@ -23,6 +23,7 @@ import { fetchAllItem } from "../../item/features/itemThunks.ts";
 import { fetchAllWarehouse } from "../../warehouse/features/warehouseThunks.ts";
 import { fetchAllCategory } from "../../category/features/categoryThunks.ts";
 import { fetchAllAccount } from "../../account/features/accountThunks.ts";
+import { fetchParty } from "../../party/features/partyThunks.ts";
 
 import { selectAuth } from "../../auth/features/authSelectors.ts";
 import { selectUserById } from "../../user/features/userSelectors.ts";
@@ -35,7 +36,7 @@ import { selectAllCategory } from "../../category/features/categorySelectors";
 import { selectAllAccount } from "../../account/features/accountSelectors.ts";
 import { selectAllUnitByBusiness } from "../../unit/features/unitSelectors.ts";
 import { fetchAllUnit } from "../../unit/features/unitThunks.ts";
-import { fetchAllStock } from "../features/stockThunks.ts";
+import { selectAllParties } from "../../party/features/partySelectors.ts";
 
 
 export default function StockEditForm() {
@@ -44,7 +45,7 @@ export default function StockEditForm() {
     const dispatch = useDispatch<AppDispatch>();
 
     useEffect(() => {
-        if(invoices.length === 0){
+        if (invoices.length === 0) {
             dispatch(fetchAllInvoice());
         }
         dispatch(fetchContainer());
@@ -54,7 +55,8 @@ export default function StockEditForm() {
         dispatch(fetchById(Number(id)));
         dispatch(fetchAllAccount());
         dispatch(fetchAllUnit());
-    }, [dispatch]);
+        dispatch(fetchParty({ type: "all" }));
+    }, [dispatch, id]);
 
     const authUser = useSelector(selectAuth);
     const user = useSelector(selectUserById(Number(authUser.user?.id)));
@@ -66,6 +68,7 @@ export default function StockEditForm() {
     const paymentAccounts = useSelector(selectAllAccount);
     const UnitOptions = useSelector(selectAllUnitByBusiness(Number(user?.business?.id)));
     const containers = useSelector(selectAllContainer);
+    const parties = useSelector(selectAllParties);
 
     const [formData, setFormData] = useState<Stock>({
         id: stock?.id,
@@ -73,7 +76,7 @@ export default function StockEditForm() {
         date: '',
         invoiceType: undefined,        
         invoiceId: undefined,
-        partyId: 0,
+        partyId: undefined,
         categoryId: 0,
         itemId: 0,
         containerId: null,
@@ -84,7 +87,14 @@ export default function StockEditForm() {
         unit: ''
     });
 
+    const selectedCategoryName =
+        categories.find((c) => c.id === formData.categoryId)?.name?.toLowerCase() ?? "";
+    const isTransferMovement = ["stock_transfer", "stock_transfer_return"].includes(formData.movementType);
+    const isTransferReturn = formData.movementType === "stock_transfer_return";
+
     useEffect(() => {
+          if (!stock) return;
+
           setFormData({
             id: stock?.id,
             businessId: user?.business?.id,
@@ -113,28 +123,40 @@ export default function StockEditForm() {
             updatedBy: user.id
           }));
         }
-    }, [user, formData.categoryId]);
+    }, [user]);
 
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({
             ...prev,
-            [name]: name === "partyId" || name === "categoryId" ? Number(value) : value,
+            [name]: name === "quantity" ? Number(value) : value,
         }));
     };
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-       
+
+        if (isTransferMovement) {
+            if (!(Number(formData.warehouseId) > 0)) {
+                toast.error(isTransferReturn ? "Please select To Warehouse for stock transfer return." : "Please select From Warehouse for stock transfer.");
+                return;
+            }
+        }
+
+        if (isTransferReturn) {
+            if (!(Number(formData.partyId) > 0)) {
+                toast.error("Please select Party for stock transfer return.");
+                return;
+            }
+        }
+
         try {
-            // Dispatch update action, including totalAmount
-            await dispatch(update(formData));
-            toast.success("Stock created successfully!");
-            dispatch(fetchAllStock());
+            await dispatch(update(formData)).unwrap();
+            toast.success("Stock updated successfully!");
             navigate(`/stock/list`);
         } catch (err) {
-            toast.error("Failed to update stock.");
+            toast.error(typeof err === "string" ? err : "Failed to update stock.");
         }
     };
 
@@ -173,20 +195,21 @@ export default function StockEditForm() {
 
                 {/* Invoice Type */}
                 <div>
-                    <Label>Select Invoice Ref (if have)</Label>
+                    <Label>Select Invoice Ref</Label>
                     <Select
                         options={invoices.map((i) => ({
-                            label: `#${i.invoiceNo}`,
+                            label: `#${i.invoiceNo ?? "No name"}`,
                             value: i.id,
                             invoiceType: i.invoiceType,
                             categoryId: i.categoryId,
                             partyId: i.partyId
                         }))}
                         placeholder="Select invoice type"
+                        isClearable
                         value={
                             invoices
                             .map((i) => ({
-                                label: `#${i.invoiceNo}`,
+                                label: `#${i.invoiceNo ?? "No name"}`,
                                 value: i.id,
                                 invoiceType: i.invoiceType,
                                 categoryId: i.categoryId,
@@ -195,19 +218,53 @@ export default function StockEditForm() {
                             .find((option) => option.value === formData.invoiceId) || null
                         }
                         onChange={(selectedOption) => {
-                        setFormData((prev) => ({
-                            ...prev,
-                            invoiceId: Number(selectedOption!.value),
-                            invoiceType: selectedOption?.invoiceType,
-                            categoryId: Number(selectedOption?.categoryId),
-                            partyId: Number(selectedOption?.partyId)
-                        }));
+                            if (!selectedOption) {
+                                setFormData((prev) => ({
+                                    ...prev,
+                                    invoiceId: undefined,
+                                    invoiceType: undefined,
+                                    categoryId: items.find((item) => item.id === prev.itemId)?.categoryId ?? 0,
+                                }));
+                                return;
+                            }
+
+                            setFormData((prev) => ({
+                                ...prev,
+                                invoiceId: Number(selectedOption.value),
+                                invoiceType: selectedOption.invoiceType,
+                                categoryId: Number(selectedOption.categoryId) || prev.categoryId,
+                                partyId: selectedOption.partyId ? Number(selectedOption.partyId) : prev.partyId,
+                            }));
                         }}
                         styles={selectStyles}
                         classNamePrefix="react-select"
                     />
                 </div>
 
+                <div>
+                    <Label>{isTransferReturn ? "Select Party" : "Select Party (Optional)"}</Label>
+                    <Select
+                        options={parties.map((p) => ({
+                            label: `${p.name}`,
+                            value: p.id,
+                        }))}
+                        placeholder={isTransferReturn ? "Select party" : "Select party (optional)"}
+                        isClearable
+                        value={
+                            parties
+                                .filter((p) => p.id === formData.partyId)
+                                .map((p) => ({ label: p.name, value: p.id }))[0] || null
+                        }
+                        onChange={(selectedOption) => {
+                            setFormData((prev) => ({
+                                ...prev,
+                                partyId: selectedOption?.value,
+                            }));
+                        }}
+                        styles={selectStyles}
+                        classNamePrefix="react-select"
+                    />
+                </div>
 
                 {/* Invoice Type */}
                 <div>
@@ -257,12 +314,15 @@ export default function StockEditForm() {
                         value={
                             items
                             ?.filter(i => i.id === formData.itemId)
-                            .map(i => ({ label: i.name, value: i.id })) || null
+                            .map(i => ({ label: i.name, value: i.id }))[0] || null
                         }
                         onChange={(selectedOption) =>
                             setFormData((prev) => ({
                                 ...prev,
                                 itemId: Number(selectedOption?.value) || 0,
+                                categoryId:
+                                    items.find((item) => item.id === Number(selectedOption?.value))?.categoryId ??
+                                    prev.categoryId,
                             }))
                         }
                         isClearable
@@ -271,7 +331,7 @@ export default function StockEditForm() {
                     />
                 </div>
 
-                {!categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                {selectedCategoryName !== "" && !["currency", "gold"].includes(selectedCategoryName) && (
                 <div>
                     <Label>Select Container</Label>
                     <Select
@@ -282,16 +342,16 @@ export default function StockEditForm() {
                         placeholder="Search and select item"
                         value={
                             containers
-                            ?.filter(c => c.id === formData.containerId)
                             .map((c) => ({
                                 label: `${c.containerNo}`,
                                 value: c.id,
                             }))
+                            .find((opt) => opt.value === formData.containerId) || null
                         }
                         onChange={(selectedOption) =>
                             setFormData((prev) => ({
                                 ...prev,
-                                containerId: Number(selectedOption!.value),
+                                containerId: selectedOption?.value ?? null,
                             }))
                         }
                         isClearable
@@ -307,8 +367,8 @@ export default function StockEditForm() {
                     <Input
                         type="number"
                         name="quantity"
-                        placeholder="Enter quantity"
-                        value={formData.quantity}
+                        placeholder="0"
+                        value={formData.quantity > 0 ? formData.quantity : ""}
                         onChange={handleChange}
                         step={0.01}
                         required
@@ -343,7 +403,38 @@ export default function StockEditForm() {
                     />
                 </div>
 
-                { categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() != "currency" && (
+                {isTransferMovement && (
+                    <div>
+                        <Label>{isTransferReturn ? "Select To Warehouse" : "Select From Warehouse"}</Label>
+                        <Select
+                            options={
+                            warehouses
+                                .map((w) => ({
+                                    label: `${w.name}`,
+                                    value: w.id,
+                                })) || []
+                            }
+                            placeholder="Search and select warehouse"
+                            value={
+                                warehouses
+                                ?.filter((w) => w.id === formData.warehouseId)
+                                .map((w) => ({ label: w.name, value: w.id }))[0] || null
+                            }
+                            onChange={(selectedOption) =>
+                                setFormData((prev) => ({
+                                    ...prev,
+                                    warehouseId: selectedOption?.value ?? null,
+                                }))
+                            }
+                            isClearable
+                            styles={selectStyles}
+                            classNamePrefix="react-select"
+                            required
+                        />
+                    </div>
+                )}
+
+                {!isTransferMovement && selectedCategoryName !== "currency" && selectedCategoryName !== "" && (
                     <div>
                         <Label>Select Warehouse</Label>
                         <Select
@@ -363,7 +454,7 @@ export default function StockEditForm() {
                             onChange={(selectedOption) =>
                                 setFormData((prev) => ({
                                     ...prev,
-                                    warehouseId: selectedOption?.value ?? 0,
+                                    warehouseId: selectedOption?.value ?? null,
                                 }))
                             }
                             isClearable
@@ -373,7 +464,7 @@ export default function StockEditForm() {
                     </div>
                 )}
 
-                {categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() === "currency" && (
+                {!isTransferMovement && selectedCategoryName === "currency" && (
                     <div>
                         <Label>Select Stock Account</Label>
                         <Select
@@ -393,7 +484,7 @@ export default function StockEditForm() {
                             onChange={(selectedOption) =>
                                 setFormData((prev) => ({
                                     ...prev,
-                                    bankId: selectedOption?.value ?? 0,
+                                    bankId: selectedOption?.value ?? null,
                                 }))
                             }
                             isClearable

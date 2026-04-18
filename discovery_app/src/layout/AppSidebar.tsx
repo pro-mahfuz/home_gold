@@ -102,20 +102,10 @@ const AppSidebar: React.FC<any> = () => {
       ],
     },
     {
-      name: "Currency Ledger",
-      icon: <ListIcon />,
-      path: "/ledger/1/party/0",
-      permission: "currency_ledger",
-    },
-    {
       name: "Ledger",
       icon: <ListIcon />,
+      path: "/ledger/all/list/0",
       permission:"manage_ledger",
-      subItems: [
-        { name: "All Ledger", path: "/ledger/all/list/0", permission:"manage_ledger" },
-        { name: "Purchase Ledger", path: "/ledger/purchase/list/0", permission:"purchase_ledger" },
-        { name: "Sale Ledger", path: "/ledger/sale/list/0", permission:"sale_ledger" },
-      ],
     },
     {
       name: "Invoice",

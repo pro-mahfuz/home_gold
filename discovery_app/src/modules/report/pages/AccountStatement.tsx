@@ -57,7 +57,7 @@ export default function AccountStatement() {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateA !== dateB) return dateA - dateB; // ASC by date
-      return (b.id || 0) - (a.id || 0); // fallback by id DESC
+      return (a.id || 0) - (b.id || 0); // fallback by id ASC
     });
   }, [ledgers]);
 

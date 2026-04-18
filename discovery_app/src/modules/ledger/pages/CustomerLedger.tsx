@@ -53,7 +53,11 @@ export default function CustomerLedger() {
 
     // Sort by date to calculate running totals correctly
     const sortedLedgers = [...ledgers].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      (a, b) => {
+        const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return (a.id || 0) - (b.id || 0);
+      }
     );
 
     // 1. Compute running balance for all transactions

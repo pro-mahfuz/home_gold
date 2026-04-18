@@ -4,10 +4,14 @@ import { fn, literal } from "sequelize";
 const STOCK_PREFIX_MAP = {
   stock_in: "STI",
   stock_out: "STO",
+  stock_transfer: "STT",
+  stock_transfer_return: "STR",
   damaged: "STA",
 };
-const TRANSFER_INVOICE_TYPE = "stock_transfer";
 const STOCK_LEDGER_CATEGORY_NAMES = ["currency", "gold"];
+const STOCK_IN_MOVEMENT_TYPES = ["stock_in", "stock_transfer_return"];
+const STOCK_OUT_MOVEMENT_TYPES = ["stock_out", "stock_transfer"];
+const STOCK_TRANSFER_MOVEMENT_TYPES = ["stock_transfer", "stock_transfer_return"];
 
 const normalizeContainerId = (containerId) => {
   if (containerId === null || containerId === undefined || containerId === "") {
@@ -36,8 +40,8 @@ const getWarehouseAvailableStock = async ({
 
   const [summary] = await Stock.findAll({
     attributes: [
-      [fn("SUM", literal(`CASE WHEN movementType = 'stock_in' THEN quantity ELSE 0 END`)), "totalIn"],
-      [fn("SUM", literal(`CASE WHEN movementType = 'stock_out' THEN quantity ELSE 0 END`)), "totalOut"],
+      [fn("SUM", literal(`CASE WHEN movementType IN ('stock_in', 'stock_transfer_return') THEN quantity ELSE 0 END`)), "totalIn"],
+      [fn("SUM", literal(`CASE WHEN movementType IN ('stock_out', 'stock_transfer') THEN quantity ELSE 0 END`)), "totalOut"],
       [fn("SUM", literal(`CASE WHEN movementType = 'damaged' THEN quantity ELSE 0 END`)), "totalDamaged"],
     ],
     where,
@@ -54,6 +58,42 @@ const getWarehouseAvailableStock = async ({
     totalOut,
     totalDamaged,
     availableQty: totalIn - totalOut - totalDamaged,
+  };
+};
+
+const getPartyTransferAvailableStock = async ({
+  businessId,
+  itemId,
+  unit,
+  partyId,
+  containerId,
+  transaction,
+}) => {
+  const where = {
+    businessId,
+    itemId,
+    unit,
+    partyId,
+    containerId: normalizeContainerId(containerId),
+  };
+
+  const [summary] = await Stock.findAll({
+    attributes: [
+      [fn("SUM", literal(`CASE WHEN movementType = 'stock_transfer' THEN quantity ELSE 0 END`)), "totalTransferred"],
+      [fn("SUM", literal(`CASE WHEN movementType = 'stock_transfer_return' THEN quantity ELSE 0 END`)), "totalReturned"],
+    ],
+    where,
+    raw: true,
+    transaction,
+  });
+
+  const totalTransferred = Number(summary?.totalTransferred) || 0;
+  const totalReturned = Number(summary?.totalReturned) || 0;
+
+  return {
+    totalTransferred,
+    totalReturned,
+    availableQty: totalTransferred - totalReturned,
   };
 };
 
@@ -129,11 +169,42 @@ export const getStockReport = async () => {
       "itemId",
       "unit",
 
-      // Sum quantity where movementType = 'in'
       [
         fn(
           "SUM",
           literal(`CASE WHEN movementType = 'stock_in' THEN quantity ELSE 0 END`)
+        ),
+        "totalStockIn",
+      ],
+
+      [
+        fn(
+          "SUM",
+          literal(`CASE WHEN movementType = 'stock_out' THEN quantity ELSE 0 END`)
+        ),
+        "totalStockOut",
+      ],
+
+      [
+        fn(
+          "SUM",
+          literal(`CASE WHEN movementType = 'stock_transfer' THEN quantity ELSE 0 END`)
+        ),
+        "totalTransferOut",
+      ],
+
+      [
+        fn(
+          "SUM",
+          literal(`CASE WHEN movementType = 'stock_transfer_return' THEN quantity ELSE 0 END`)
+        ),
+        "totalTransferReturn",
+      ],
+
+      [
+        fn(
+          "SUM",
+          literal(`CASE WHEN movementType IN ('stock_in', 'stock_transfer_return') THEN quantity ELSE 0 END`)
         ),
         "totalIn",
       ],
@@ -142,7 +213,7 @@ export const getStockReport = async () => {
       [
         fn(
           "SUM",
-          literal(`CASE WHEN movementType = 'stock_out' THEN quantity ELSE 0 END`)
+          literal(`CASE WHEN movementType IN ('stock_out', 'stock_transfer') THEN quantity ELSE 0 END`)
         ),
         "totalOut",
       ],
@@ -173,12 +244,35 @@ export const getStockReport = async () => {
 
   return data.map((d) => {
     const json = d.toJSON();
+    const totalStockIn = Number(json.totalStockIn) || 0;
+    const totalStockOut = Number(json.totalStockOut) || 0;
+    const totalTransferOut = Number(json.totalTransferOut) || 0;
+    const totalTransferReturn = Number(json.totalTransferReturn) || 0;
+    const totalDamaged = Number(json.totalDamaged) || 0;
+    const totalIn = Number(json.totalIn) || 0;
+    const totalOut = Number(json.totalOut) || 0;
+    const currentStock =
+      totalStockIn -
+      totalStockOut -
+      totalTransferOut +
+      totalTransferReturn -
+      totalDamaged;
+    const transferStock = totalTransferOut - totalTransferReturn;
+    const totalStock = currentStock + transferStock;
+
     return {
       ...json,
-      totalIn: Number(json.totalIn),
-      totalOut: Number(json.totalOut),
-      totalDamaged: Number(json.totalDamaged),
-      availableQty: Number(json.totalIn) - Number(json.totalOut) - Number(json.totalDamaged),
+      totalStockIn,
+      totalStockOut,
+      totalTransferOut,
+      totalTransferReturn,
+      totalIn,
+      totalOut,
+      totalDamaged,
+      currentStock,
+      transferStock,
+      totalStock,
+      availableQty: currentStock,
     };
   });
 };
@@ -188,17 +282,31 @@ export const getOverallStockReport = async () => {
 
   const summary = details.reduce(
     (acc, row) => {
+      acc.totalStockIn += Number(row.totalStockIn) || 0;
+      acc.totalStockOut += Number(row.totalStockOut) || 0;
+      acc.totalTransferOut += Number(row.totalTransferOut) || 0;
+      acc.totalTransferReturn += Number(row.totalTransferReturn) || 0;
       acc.totalIn += Number(row.totalIn) || 0;
       acc.totalOut += Number(row.totalOut) || 0;
       acc.totalDamaged += Number(row.totalDamaged) || 0;
-      acc.totalAvailable += Number(row.availableQty) || 0;
+      acc.totalCurrentStock += Number(row.currentStock) || 0;
+      acc.totalTransferStock += Number(row.transferStock) || 0;
+      acc.totalStock += Number(row.totalStock) || 0;
+      acc.totalAvailable += Number(row.currentStock) || 0;
       return acc;
     },
     {
       totalItems: details.length,
+      totalStockIn: 0,
+      totalStockOut: 0,
+      totalTransferOut: 0,
+      totalTransferReturn: 0,
       totalIn: 0,
       totalOut: 0,
       totalDamaged: 0,
+      totalCurrentStock: 0,
+      totalTransferStock: 0,
+      totalStock: 0,
       totalAvailable: 0,
     }
   );
@@ -216,35 +324,39 @@ export const createStockTransfer = async (req) => {
     const {
       businessId,
       date,
+      movementType = "stock_transfer",
       categoryId,
+      invoiceId = null,
       itemId,
       containerId = null,
       unit,
       quantity,
+      warehouseId = null,
       fromWarehouseId,
-      toWarehouseId,
       partyId = null,
       createdBy = null,
       updatedBy = null,
     } = req.body;
 
+    const normalizedMovementType =
+      movementType === "stock_transfer_return" ? "stock_transfer_return" : "stock_transfer";
+    const isTransferReturn = normalizedMovementType === "stock_transfer_return";
     const normalizedQty = Number(quantity) || 0;
-    const normalizedFromWarehouseId = Number(fromWarehouseId) || 0;
-    const normalizedToWarehouseId = Number(toWarehouseId) || 0;
+    const normalizedWarehouseId = Number(warehouseId ?? fromWarehouseId) || 0;
     const normalizedPartyId = Number(partyId) > 0 ? Number(partyId) : null;
-    const normalizedCategoryId = Number(categoryId) > 0 ? Number(categoryId) : null;
+    const normalizedInvoiceId = Number(invoiceId) > 0 ? Number(invoiceId) : null;
     const normalizedBusinessId = Number(businessId) || 0;
+    const normalizedContainerId = normalizeContainerId(containerId);
 
     if (normalizedQty <= 0) {
       throw { status: 400, message: "Transfer quantity must be greater than zero." };
     }
 
-    if (!normalizedFromWarehouseId || !normalizedToWarehouseId) {
-      throw { status: 400, message: "Both source and destination warehouses are required." };
-    }
-
-    if (normalizedFromWarehouseId === normalizedToWarehouseId) {
-      throw { status: 400, message: "Source and destination warehouses cannot be the same." };
+    if (!normalizedWarehouseId) {
+      throw {
+        status: 400,
+        message: isTransferReturn ? "Return warehouse is required." : "Source warehouse is required.",
+      };
     }
 
     const normalizedItemId = Number(itemId) || 0;
@@ -255,50 +367,85 @@ export const createStockTransfer = async (req) => {
     if (!unit) {
       throw { status: 400, message: "Unit is required for stock transfer." };
     }
+    if (isTransferReturn && !normalizedPartyId) {
+      throw { status: 400, message: "Party is required for stock transfer return." };
+    }
 
-    const [item, fromWarehouse, toWarehouse, category, party] = await Promise.all([
+    const [item, warehouse, party] = await Promise.all([
       Item.findByPk(normalizedItemId, { transaction: t }),
-      Warehouse.findByPk(normalizedFromWarehouseId, { transaction: t }),
-      Warehouse.findByPk(normalizedToWarehouseId, { transaction: t }),
-      normalizedCategoryId ? Category.findByPk(normalizedCategoryId, { transaction: t }) : Promise.resolve(null),
+      Warehouse.findByPk(normalizedWarehouseId, { transaction: t }),
       normalizedPartyId ? Party.findByPk(normalizedPartyId, { transaction: t }) : Promise.resolve(null),
     ]);
+
+    const normalizedCategoryId = Number(categoryId) > 0
+      ? Number(categoryId)
+      : Number(item?.categoryId) > 0
+        ? Number(item.categoryId)
+        : null;
+    const category = normalizedCategoryId
+      ? await Category.findByPk(normalizedCategoryId, { transaction: t })
+      : null;
 
     if (!item) {
       throw { status: 404, message: "Item not found." };
     }
-    if (!fromWarehouse) {
-      throw { status: 404, message: "Source warehouse not found." };
-    }
-    if (!toWarehouse) {
-      throw { status: 404, message: "Destination warehouse not found." };
-    }
-
-    const sourceSummary = await getWarehouseAvailableStock({
-      businessId: normalizedBusinessId,
-      itemId: normalizedItemId,
-      unit,
-      warehouseId: normalizedFromWarehouseId,
-      containerId,
-      transaction: t,
-    });
-
-    if (sourceSummary.availableQty < normalizedQty) {
+    if (!warehouse) {
       throw {
-        status: 400,
-        message: `Insufficient stock in source warehouse. Available: ${sourceSummary.availableQty.toFixed(2)} ${unit}`,
+        status: 404,
+        message: isTransferReturn ? "Return warehouse not found." : "Source warehouse not found.",
       };
+    }
+    if (normalizedPartyId && !party) {
+      throw { status: 404, message: "Party not found." };
+    }
+    if (normalizedCategoryId && !category) {
+      throw { status: 404, message: "Category not found." };
+    }
+
+    let stockSummary = null;
+    if (isTransferReturn) {
+      stockSummary = await getPartyTransferAvailableStock({
+        businessId: normalizedBusinessId,
+        itemId: normalizedItemId,
+        unit,
+        partyId: normalizedPartyId,
+        containerId: normalizedContainerId,
+        transaction: t,
+      });
+
+      if (stockSummary.availableQty < normalizedQty) {
+        throw {
+          status: 400,
+          message: `Insufficient transferred stock with party. Available: ${stockSummary.availableQty.toFixed(2)} ${unit}`,
+        };
+      }
+    } else {
+      stockSummary = await getWarehouseAvailableStock({
+        businessId: normalizedBusinessId,
+        itemId: normalizedItemId,
+        unit,
+        warehouseId: normalizedWarehouseId,
+        containerId: normalizedContainerId,
+        transaction: t,
+      });
+
+      if (stockSummary.availableQty < normalizedQty) {
+        throw {
+          status: 400,
+          message: `Insufficient stock in source warehouse. Available: ${stockSummary.availableQty.toFixed(2)} ${unit}`,
+        };
+      }
     }
 
     const commonPayload = {
       businessId: normalizedBusinessId,
       date,
-      invoiceType: TRANSFER_INVOICE_TYPE,
-      invoiceId: null,
+      invoiceType: normalizedMovementType,
+      invoiceId: normalizedInvoiceId,
       partyId: normalizedPartyId,
       categoryId: normalizedCategoryId,
       itemId: normalizedItemId,
-      containerId: normalizeContainerId(containerId),
+      containerId: normalizedContainerId,
       bankId: null,
       quantity: normalizedQty,
       unit,
@@ -306,59 +453,34 @@ export const createStockTransfer = async (req) => {
       updatedBy,
     };
 
-    const stockOut = await Stock.create(
+    const stockTransfer = await Stock.create(
       {
         ...commonPayload,
-        prefix: STOCK_PREFIX_MAP.stock_out,
-        movementType: "stock_out",
-        warehouseId: normalizedFromWarehouseId,
+        prefix: STOCK_PREFIX_MAP[normalizedMovementType],
+        movementType: normalizedMovementType,
+        warehouseId: normalizedWarehouseId,
       },
       { transaction: t }
     );
 
-    const stockIn = await Stock.create(
-      {
-        ...commonPayload,
-        prefix: STOCK_PREFIX_MAP.stock_in,
-        movementType: "stock_in",
-        warehouseId: normalizedToWarehouseId,
-      },
-      { transaction: t }
-    );
 
     if (category && STOCK_LEDGER_CATEGORY_NAMES.includes(category.name.toLowerCase())) {
-      const toWhom = party?.name ?? "N/A";
+      const partyName = party?.name ?? "N/A";
       await Ledger.bulkCreate(
         [
           {
             businessId: normalizedBusinessId,
             categoryId: normalizedCategoryId,
-            transactionType: "stock_out",
+            transactionType: normalizedMovementType,
             partyId: normalizedPartyId,
             date,
-            invoiceId: null,
-            stockId: stockOut.id,
-            description: `Transfer to ${toWhom} | ${fromWarehouse.name} -> ${toWarehouse.name}`,
+            invoiceId: normalizedInvoiceId,
+            stockId: stockTransfer.id,
+            description: isTransferReturn ? `Transfer return from ${partyName}` : `Transfer to ${partyName}`,
             currency: null,
             stockCurrency: item.name,
-            debitQty: 0,
-            creditQty: normalizedQty,
-            createdBy,
-            updatedBy,
-          },
-          {
-            businessId: normalizedBusinessId,
-            categoryId: normalizedCategoryId,
-            transactionType: "stock_in",
-            partyId: normalizedPartyId,
-            date,
-            invoiceId: null,
-            stockId: stockIn.id,
-            description: `Transfer to ${toWhom} | ${fromWarehouse.name} -> ${toWarehouse.name}`,
-            currency: null,
-            stockCurrency: item.name,
-            debitQty: normalizedQty,
-            creditQty: 0,
+            debitQty: isTransferReturn ? normalizedQty : 0,
+            creditQty: isTransferReturn ? 0 : normalizedQty,
             createdBy,
             updatedBy,
           },
@@ -370,21 +492,20 @@ export const createStockTransfer = async (req) => {
     await t.commit();
 
     return {
-      transferOutId: stockOut.id,
-      transferInId: stockIn.id,
+      transferId: stockTransfer.id,
+      movementType: normalizedMovementType,
       itemId: normalizedItemId,
       itemName: item.name,
-      containerId: normalizeContainerId(containerId),
-      fromWarehouseId: normalizedFromWarehouseId,
-      fromWarehouseName: fromWarehouse.name,
-      toWarehouseId: normalizedToWarehouseId,
-      toWarehouseName: toWarehouse.name,
-      toWhomPartyId: normalizedPartyId,
-      toWhom: party?.name ?? null,
+      containerId: normalizedContainerId,
+      warehouseId: normalizedWarehouseId,
+      warehouseName: warehouse.name,
+      invoiceId: normalizedInvoiceId,
+      partyId: normalizedPartyId,
+      partyName: party?.name ?? null,
       quantity: normalizedQty,
       unit,
-      availableBeforeTransfer: sourceSummary.availableQty,
-      availableAfterTransfer: sourceSummary.availableQty - normalizedQty,
+      availableBeforeTransfer: stockSummary.availableQty,
+      availableAfterTransfer: stockSummary.availableQty - normalizedQty,
     };
   } catch (err) {
     if (!t.finished) await t.rollback();
@@ -393,7 +514,9 @@ export const createStockTransfer = async (req) => {
 };
 
 export const createStock = async (req) => {
-  
+  if (STOCK_TRANSFER_MOVEMENT_TYPES.includes(req.body.movementType)) {
+    return createStockTransfer(req);
+  }
 
   const t = await sequelize.transaction();
 
@@ -409,9 +532,9 @@ export const createStock = async (req) => {
 
     let debitQty = 0;
     let creditQty = 0;
-    if (req.body.movementType === 'stock_out' || req.body.movementType === 'damaged') {
+    if (STOCK_OUT_MOVEMENT_TYPES.includes(req.body.movementType) || req.body.movementType === 'damaged') {
       creditQty = req.body.quantity;
-    } else if (req.body.movementType === 'stock_in') {
+    } else if (STOCK_IN_MOVEMENT_TYPES.includes(req.body.movementType)) {
       debitQty = req.body.quantity;
     }
 
@@ -474,8 +597,22 @@ export const updateStock = async (req) => {
       throw { status: 404, message: "Stock not found" };
     }
 
+    req.body.prefix = STOCK_PREFIX_MAP[req.body.movementType] || stock.prefix;
+
     if (!req.body.partyId) {
       req.body.partyId = null;
+    }
+    if (!req.body.invoiceId) {
+      req.body.invoiceId = null;
+    }
+    if (!req.body.warehouseId) {
+      req.body.warehouseId = null;
+    }
+    if (!req.body.bankId) {
+      req.body.bankId = null;
+    }
+    if (!req.body.containerId) {
+      req.body.containerId = null;
     }
 
     // Update stock with request body data
@@ -484,9 +621,9 @@ export const updateStock = async (req) => {
     // Calculate debit and credit quantities based on movementType
     let debitQty = 0;
     let creditQty = 0;
-    if (req.body.movementType === 'stock_out') {
+    if (STOCK_OUT_MOVEMENT_TYPES.includes(req.body.movementType) || req.body.movementType === "damaged") {
       creditQty = req.body.quantity;
-    } else if (req.body.movementType === 'stock_in') {
+    } else if (STOCK_IN_MOVEMENT_TYPES.includes(req.body.movementType)) {
       debitQty = req.body.quantity;
     }
 
@@ -497,18 +634,17 @@ export const updateStock = async (req) => {
     }
 
     
-    const category = await Category.findByPk(req.body.categoryId);
+    const category = await Category.findByPk(req.body.categoryId, { transaction: t });
+    const ledger = await Ledger.findOne({
+      where: { stockId: req.body.id },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
     // Update the ledger instance
     if (category && ["currency", "gold"].includes(category.name.toLowerCase())) {
-      // Find ledger entry related to this stock
-      const ledger = await Ledger.findOne({
-        where: { stockId: req.body.id },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
       if (!ledger) {
-        await ledger.create({
+        await Ledger.create({
           businessId: req.body.businessId,
           categoryId: category ? category.id : req.body.categoryId,
           invoiceId: req.body.invoiceId,
@@ -540,6 +676,8 @@ export const updateStock = async (req) => {
           updatedBy: req.body.updatedBy
         }, { transaction: t });
       }
+    } else if (ledger) {
+      await ledger.destroy({ transaction: t });
     }
 
     // Commit transaction

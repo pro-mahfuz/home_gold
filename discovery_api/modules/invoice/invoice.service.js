@@ -2,7 +2,8 @@ import { Invoice, InvoiceItem, User, Payment, Item, Container, Warehouse, Stock,
 import { fn, col, Op, Sequelize } from "sequelize";
 
 const AUTO_PURCHASE_STOCK_TYPES = ["fix_purchase", "unfix_purchase", "wholesale_purchase"];
-const AUTO_STOCK_MANAGED_TYPES = ["sale", ...AUTO_PURCHASE_STOCK_TYPES];
+const AUTO_SALE_STOCK_TYPES = ["wholesale_sale"];
+const AUTO_STOCK_MANAGED_TYPES = ["sale", ...AUTO_PURCHASE_STOCK_TYPES, ...AUTO_SALE_STOCK_TYPES];
 const STOCK_PREFIX_MAP = {
   stock_in: "STI",
   stock_out: "STO",
@@ -48,16 +49,121 @@ const ensureMandatoryWholesalePaidFields = ({ invoiceType, isFullPaid, bankId })
   }
 };
 
-const shouldCreatePurchaseStockLedger = (invoiceType, categoryName) => {
+const normalizeOptionalId = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const normalizedValue = Number(value);
+  return Number.isNaN(normalizedValue) ? null : normalizedValue;
+};
+
+const shouldCreateAutoStockLedger = (invoiceType, categoryName) => {
   const normalizedType = invoiceType?.toLowerCase();
   const normalizedCategory = categoryName?.toLowerCase();
   const isStockLedgerCategory = STOCK_LEDGER_CATEGORY_NAMES.includes(normalizedCategory);
 
-  if (normalizedType === "wholesale_purchase") {
+  if (["wholesale_purchase", "wholesale_sale"].includes(normalizedType)) {
     return true;
   }
 
   return !isStockLedgerCategory;
+};
+
+const getWarehouseAvailableStock = async ({
+  businessId,
+  itemId,
+  unit,
+  warehouseId,
+  containerId,
+  transaction,
+}) => {
+  const [summary] = await Stock.findAll({
+    attributes: [
+      [fn("SUM", Sequelize.literal(`CASE WHEN movementType IN ('stock_in', 'stock_transfer_return') THEN quantity ELSE 0 END`)), "totalIn"],
+      [fn("SUM", Sequelize.literal(`CASE WHEN movementType IN ('stock_out', 'stock_transfer') THEN quantity ELSE 0 END`)), "totalOut"],
+      [fn("SUM", Sequelize.literal(`CASE WHEN movementType = 'damaged' THEN quantity ELSE 0 END`)), "totalDamaged"],
+    ],
+    where: {
+      businessId,
+      itemId,
+      unit,
+      warehouseId,
+      containerId: normalizeOptionalId(containerId),
+    },
+    raw: true,
+    transaction,
+  });
+
+  const totalIn = Number(summary?.totalIn) || 0;
+  const totalOut = Number(summary?.totalOut) || 0;
+  const totalDamaged = Number(summary?.totalDamaged) || 0;
+
+  return {
+    totalIn,
+    totalOut,
+    totalDamaged,
+    availableQty: totalIn - totalOut - totalDamaged,
+  };
+};
+
+const ensureAutoSaleItemsReady = async ({
+  invoice,
+  items,
+  categoryName,
+  transaction,
+}) => {
+  const normalizedCategory = categoryName?.toLowerCase();
+  const isStockLedgerCategory = STOCK_LEDGER_CATEGORY_NAMES.includes(normalizedCategory);
+
+  if (!Array.isArray(items) || items.length === 0 || isStockLedgerCategory) {
+    return;
+  }
+
+  const requestedStockMap = items.reduce((acc, item) => {
+    const warehouseId = Number(item.warehouseId) || 0;
+    if (!warehouseId) {
+      throw {
+        status: 400,
+        message: `Warehouse is required for ${item.name || "all wholesale sale items"}.`,
+      };
+    }
+
+    const normalizedContainerId = normalizeOptionalId(item.containerId);
+    const key = `${item.itemId}_${item.unit}_${warehouseId}_${normalizedContainerId ?? "null"}`;
+
+    if (!acc[key]) {
+      acc[key] = {
+        itemId: item.itemId,
+        itemName: item.name,
+        unit: item.unit,
+        warehouseId,
+        containerId: normalizedContainerId,
+        quantity: 0,
+      };
+    }
+
+    acc[key].quantity += Number(item.quantity) || 0;
+    return acc;
+  }, {});
+
+  for (const entry of Object.values(requestedStockMap)) {
+    const stockSummary = await getWarehouseAvailableStock({
+      businessId: invoice.businessId,
+      itemId: entry.itemId,
+      unit: entry.unit,
+      warehouseId: entry.warehouseId,
+      containerId: entry.containerId,
+      transaction,
+    });
+
+    if (stockSummary.availableQty < entry.quantity) {
+      throw {
+        status: 400,
+        message: `Insufficient stock for ${entry.itemName || "item"}. Available: ${stockSummary.availableQty.toFixed(2)} ${entry.unit}`,
+      };
+    }
+  }
 };
 
 const createAutoStockEntries = async ({
@@ -270,9 +376,9 @@ export const getAllInvoice = async () => {
         stockMap[key] = { stockIn: 0, stockOut: 0 };
       }
 
-      if (stock.movementType === "stock_in") {
+      if (["stock_in", "stock_transfer_return"].includes(stock.movementType)) {
         stockMap[key].stockIn += stock.quantity || 0;
-      } else if (stock.movementType === "stock_out") {
+      } else if (["stock_out", "stock_transfer"].includes(stock.movementType)) {
         stockMap[key].stockOut += stock.quantity || 0;
       }
     });
@@ -468,7 +574,7 @@ export const getAllInvoiceWithPagination = async (
               stock =>
                 stock.itemId === item.itemId &&
                 stock.unit === item.unit &&
-                stock.movementType === "stock_in"
+                ["stock_in", "stock_transfer_return"].includes(stock.movementType)
             )
             .reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
@@ -478,7 +584,7 @@ export const getAllInvoiceWithPagination = async (
               stock =>
                 stock.itemId === item.itemId &&
                 stock.unit === item.unit &&
-                stock.movementType === "stock_out"
+                ["stock_out", "stock_transfer"].includes(stock.movementType)
             )
             .reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
@@ -574,11 +680,11 @@ export const getPurchaseReport = async () => {
       // Calculate stock sum for each item
       const itemsWithStockSum = invoice.items?.map(item => {
           const stockInForItem = invoice.stocks?.filter(
-              stock => stock.itemId === item.itemId && stock.unit === item.unit && stock.movementType === "stock_in"
+              stock => stock.itemId === item.itemId && stock.unit === item.unit && ["stock_in", "stock_transfer_return"].includes(stock.movementType)
           ).reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
           const stockOutForItem = invoice.stocks?.filter(
-              stock => stock.itemId === item.itemId && stock.unit === item.unit && stock.movementType === "stock_out"
+              stock => stock.itemId === item.itemId && stock.unit === item.unit && ["stock_out", "stock_transfer"].includes(stock.movementType)
           ).reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
           return {
@@ -669,11 +775,11 @@ export const getSaleReport = async () => {
       // Calculate stock sum for each item
       const itemsWithStockSum = invoice.items?.map(item => {
           const stockInForItem = invoice.stocks?.filter(
-              stock => stock.itemId === item.itemId && stock.unit === item.unit && stock.movementType === "stock_in"
+              stock => stock.itemId === item.itemId && stock.unit === item.unit && ["stock_in", "stock_transfer_return"].includes(stock.movementType)
           ).reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
           const stockOutForItem = invoice.stocks?.filter(
-              stock => stock.itemId === item.itemId && stock.unit === item.unit && stock.movementType === "stock_out"
+              stock => stock.itemId === item.itemId && stock.unit === item.unit && ["stock_out", "stock_transfer"].includes(stock.movementType)
           ).reduce((sum, stock) => sum + (stock.quantity ?? 0), 0) ?? 0;
 
           return {
@@ -1375,7 +1481,24 @@ export const createInvoice = async (req) => {
         items,
         movementType: "stock_in",
         transaction: t,
-        createLedgerEntry: shouldCreatePurchaseStockLedger(type, category?.name),
+        createLedgerEntry: shouldCreateAutoStockLedger(type, category?.name),
+      });
+    }
+
+    if (invoice.system === 1 && AUTO_SALE_STOCK_TYPES.includes(type)) {
+      await ensureAutoSaleItemsReady({
+        invoice,
+        items,
+        categoryName: category?.name,
+        transaction: t,
+      });
+
+      await createAutoStockEntries({
+        invoice,
+        items,
+        movementType: "stock_out",
+        transaction: t,
+        createLedgerEntry: shouldCreateAutoStockLedger(type, category?.name),
       });
     }
 
@@ -1650,7 +1773,25 @@ export const updateInvoice = async (req) => {
             movementType: "stock_in",
             transaction: t,
             updatedBy: updatedInvoice.updatedBy,
-            createLedgerEntry: shouldCreatePurchaseStockLedger(nextInvoiceType, category?.name),
+            createLedgerEntry: shouldCreateAutoStockLedger(nextInvoiceType, category?.name),
+          });
+        }
+
+        if (updatedInvoice.system === 1 && AUTO_SALE_STOCK_TYPES.includes(nextInvoiceType)) {
+          await ensureAutoSaleItemsReady({
+            invoice: updatedInvoice,
+            items,
+            categoryName: category?.name,
+            transaction: t,
+          });
+
+          await createAutoStockEntries({
+            invoice: updatedInvoice,
+            items,
+            movementType: "stock_out",
+            transaction: t,
+            updatedBy: updatedInvoice.updatedBy,
+            createLedgerEntry: shouldCreateAutoStockLedger(nextInvoiceType, category?.name),
           });
         }
 

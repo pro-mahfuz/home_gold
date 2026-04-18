@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Table,
@@ -13,10 +13,11 @@ import PageMeta from "../../../components/common/PageMeta.tsx";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch } from "../../../store/store.ts";
 import {
+  selectAllStock,
   selectStockStatus,
   selectStockReport
 } from "../../stock/features/stockSelectors.ts";
-import { getStockReport } from "../../stock/features/stockThunks.ts";
+import { fetchAllStock, getStockReport } from "../../stock/features/stockThunks.ts";
 import { selectAuth } from "../../auth/features/authSelectors";
 import { selectUserById } from "../../user/features/userSelectors";
 import { selectAllCategory } from "../../category/features/categorySelectors.ts";
@@ -28,6 +29,7 @@ export default function StockReport() {
 
   useEffect(() => {
     dispatch(getStockReport());
+    dispatch(fetchAllStock());
     dispatch(fetchAllCategory());
   }, [dispatch]);
 
@@ -35,23 +37,102 @@ export default function StockReport() {
   const user = useSelector(selectUserById(Number(authUser.user?.id)));
   const status = useSelector(selectStockStatus);
   const stockReports = useSelector(selectStockReport);
+  const stocks = useSelector(selectAllStock);
   const categories = useSelector(selectAllCategory);
-  const positiveStocks = stockReports.filter(
-    (stock) =>
-      Number(stock.totalIn) - Number(stock.totalOut) - Number(stock.totalDamaged) > 0
-  );
+  const showContainerColumn = !categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()));
+  const tableColumnCount = showContainerColumn ? 13 : 12;
+  const partyTransferColumnCount = showContainerColumn ? 8 : 7;
   const overall = stockReports.reduce(
     (acc, stock) => {
+      acc.totalStockIn += Number(stock.totalStockIn) || 0;
+      acc.totalStockOut += Number(stock.totalStockOut) || 0;
+      acc.totalTransferOut += Number(stock.totalTransferOut) || 0;
+      acc.totalTransferReturn += Number(stock.totalTransferReturn) || 0;
       acc.totalIn += Number(stock.totalIn) || 0;
       acc.totalOut += Number(stock.totalOut) || 0;
       acc.totalDamaged += Number(stock.totalDamaged) || 0;
-      acc.available +=
-        Number(stock.availableQty) ||
-        (Number(stock.totalIn) - Number(stock.totalOut) - Number(stock.totalDamaged));
+      acc.currentStock += Number(stock.currentStock) || 0;
+      acc.transferStock += Number(stock.transferStock) || 0;
+      acc.totalStock += Number(stock.totalStock) || 0;
       return acc;
     },
-    { totalIn: 0, totalOut: 0, totalDamaged: 0, available: 0 }
+    {
+      totalStockIn: 0,
+      totalStockOut: 0,
+      totalTransferOut: 0,
+      totalTransferReturn: 0,
+      totalIn: 0,
+      totalOut: 0,
+      totalDamaged: 0,
+      currentStock: 0,
+      transferStock: 0,
+      totalStock: 0
+    }
   );
+
+  const partyTransferStocks = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        partyId: number;
+        partyName: string;
+        itemId: number;
+        itemName: string;
+        containerId: number;
+        containerNo: string;
+        unit: string;
+        transferOut: number;
+        transferReturn: number;
+        transferStock: number;
+      }
+    >();
+
+    stocks
+      .filter((stock) => ["stock_transfer", "stock_transfer_return"].includes(stock.movementType))
+      .forEach((stock) => {
+        const partyId = Number(stock.partyId) || 0;
+        const itemId = Number(stock.itemId) || 0;
+        const containerId = Number(stock.containerId) || 0;
+        const unit = stock.unit ?? "";
+        const key = [partyId, itemId, containerId, unit].join("|");
+
+        const existing = grouped.get(key) ?? {
+          partyId,
+          partyName: stock.party?.name ?? "-",
+          itemId,
+          itemName: stock.item?.name ?? "-",
+          containerId,
+          containerNo: stock.container?.containerNo ?? "-",
+          unit,
+          transferOut: 0,
+          transferReturn: 0,
+          transferStock: 0,
+        };
+
+        const quantity = Number(stock.quantity) || 0;
+        if (stock.movementType === "stock_transfer") {
+          existing.transferOut += quantity;
+        }
+        if (stock.movementType === "stock_transfer_return") {
+          existing.transferReturn += quantity;
+        }
+
+        existing.transferStock = existing.transferOut - existing.transferReturn;
+        grouped.set(key, existing);
+      });
+
+    return Array.from(grouped.values())
+      .filter((row) => row.transferOut > 0 || row.transferReturn > 0)
+      .sort((a, b) => {
+        const partyCompare = a.partyName.localeCompare(b.partyName);
+        if (partyCompare !== 0) return partyCompare;
+
+        const itemCompare = a.itemName.localeCompare(b.itemName);
+        if (itemCompare !== 0) return itemCompare;
+
+        return a.unit.localeCompare(b.unit);
+      });
+  }, [stocks]);
   
 
   return (
@@ -105,22 +186,38 @@ export default function StockReport() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-4">
                 <div className="border border-gray-300 rounded p-2 text-center text-sm">
-                  <p className="text-gray-500">Overall In</p>
-                  <p className="font-semibold">{overall.totalIn.toFixed(2)}</p>
+                  <p className="text-gray-500">Stock In</p>
+                  <p className="font-semibold">{overall.totalStockIn.toFixed(2)}</p>
                 </div>
                 <div className="border border-gray-300 rounded p-2 text-center text-sm">
-                  <p className="text-gray-500">Overall Out</p>
-                  <p className="font-semibold">{overall.totalOut.toFixed(2)}</p>
+                  <p className="text-gray-500">Transfer Return</p>
+                  <p className="font-semibold">{overall.totalTransferReturn.toFixed(2)}</p>
                 </div>
                 <div className="border border-gray-300 rounded p-2 text-center text-sm">
-                  <p className="text-gray-500">Overall Damaged</p>
+                  <p className="text-gray-500">Stock Out</p>
+                  <p className="font-semibold">{overall.totalStockOut.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Transfer Out</p>
+                  <p className="font-semibold">{overall.totalTransferOut.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Adjustment</p>
                   <p className="font-semibold">{overall.totalDamaged.toFixed(2)}</p>
                 </div>
                 <div className="border border-gray-300 rounded p-2 text-center text-sm">
-                  <p className="text-gray-500">Overall Available</p>
-                  <p className="font-semibold">{overall.available.toFixed(2)}</p>
+                  <p className="text-gray-500">Current Stock</p>
+                  <p className="font-semibold">{overall.currentStock.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Transfer Stock</p>
+                  <p className="font-semibold">{overall.transferStock.toFixed(2)}</p>
+                </div>
+                <div className="border border-gray-300 rounded p-2 text-center text-sm">
+                  <p className="text-gray-500">Total Stock</p>
+                  <p className="font-semibold">{overall.totalStock.toFixed(2)}</p>
                 </div>
               </div>
             
@@ -129,40 +226,44 @@ export default function StockReport() {
                 <TableHeader className="border border-gray-500 dark:border-white/[0.05] bg-gray-200 text-black text-sm dark:bg-gray-800 dark:text-gray-400">
                   <TableRow>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Sl</TableCell>
-                    {!categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                    {showContainerColumn && (
                       <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Container</TableCell>
                     )}
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Warehouse</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Item</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Unit</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Stock In</TableCell>
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Return</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Stock Out</TableCell>
-                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Stock</TableCell>
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Out</TableCell>
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Current Stock</TableCell>
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Stock</TableCell>
+                    <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Total Stock</TableCell>
                     <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Remarks</TableCell>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                   {status === 'loading' ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                      <TableRow>
+                      <TableCell colSpan={tableColumnCount} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                         Loading data...
                       </TableCell>
                     </TableRow>
                   ) : stockReports.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                      <TableCell colSpan={tableColumnCount} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
                         No data found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    positiveStocks.map((stock, index) => (
+                    stockReports.map((stock, index) => (
                       <TableRow key={index} className="border border-gray-500 dark:border-white/[0.05]">
                         <TableCell className="text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
                           {index + 1}
                         </TableCell>
                         
-                        {!categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                        {showContainerColumn && (
                           <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
                               {stock.container?.containerNo}
                           </TableCell>
@@ -179,24 +280,108 @@ export default function StockReport() {
                         </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
-                          {stock.totalIn.toFixed(2)}
+                          {(stock.totalStockIn ?? 0).toFixed(2)}
                         </TableCell>
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
-                          {stock.totalOut.toFixed(2)}
+                          {(stock.totalTransferReturn ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                          {(stock.totalStockOut ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                          {(stock.totalTransferOut ?? 0).toFixed(2)}
                         </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
-                          {(stock.availableQty ?? (stock.totalIn - stock.totalOut - stock.totalDamaged)).toFixed(2)}
+                          {(stock.currentStock ?? 0).toFixed(2)}
+                        </TableCell>
+
+                        <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                          {(stock.transferStock ?? 0).toFixed(2)}
+                        </TableCell>
+
+                        <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                          {(stock.totalStock ?? 0).toFixed(2)}
                         </TableCell>
                         
                         <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
-                          Adjustment: {stock.totalDamaged.toFixed(2)}
+                          Total In: {stock.totalIn.toFixed(2)} | Total Out: {stock.totalOut.toFixed(2)} | Adjustment: {stock.totalDamaged.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
+
+              <div className="mt-8">
+                <h6 className="border border-gray-500 p-1 rounded text-sm font-semibold text-gray-800 dark:text-white/90 mb-4 text-center">
+                  Transfer Stock Of All Party
+                </h6>
+
+                <Table>
+                  <TableHeader className="border border-gray-500 dark:border-white/[0.05] bg-gray-200 text-black text-sm dark:bg-gray-800 dark:text-gray-400">
+                    <TableRow>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Sl</TableCell>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Party</TableCell>
+                      {showContainerColumn && (
+                        <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Container</TableCell>
+                      )}
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Item</TableCell>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Unit</TableCell>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Out</TableCell>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Return</TableCell>
+                      <TableCell isHeader className="border border-gray-500 text-center px-2 py-1">Transfer Stock</TableCell>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                    {status === "loading" ? (
+                      <TableRow>
+                        <TableCell colSpan={partyTransferColumnCount} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                          Loading data...
+                        </TableCell>
+                      </TableRow>
+                    ) : partyTransferStocks.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={partyTransferColumnCount} className="border border-gray-500 text-center py-4 text-gray-500 dark:text-gray-300">
+                          No transfer stock found.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      partyTransferStocks.map((stock, index) => (
+                        <TableRow key={`${stock.partyId}-${stock.itemId}-${stock.containerId}-${stock.unit}`} className="border border-gray-500 dark:border-white/[0.05]">
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.partyName}
+                          </TableCell>
+                          {showContainerColumn && (
+                            <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                              {stock.containerNo}
+                            </TableCell>
+                          )}
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.itemName}
+                          </TableCell>
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.unit?.toUpperCase() || "-"}
+                          </TableCell>
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.transferOut.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.transferReturn.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="border border-gray-500 text-center px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                            {stock.transferStock.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </div>
         </div>

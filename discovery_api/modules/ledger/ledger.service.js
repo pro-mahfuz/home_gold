@@ -13,7 +13,8 @@ export const getAllLedger = async () => {
       { model: User, as: "updatedByUser" },
     ],
     order: [
-      ["date", "ASC"],  // primary order
+      ["date", "ASC"],
+      ["id", "ASC"],
     ],
     subQuery: false, // important when using includes
   });
@@ -42,7 +43,7 @@ export const getAllLedger = async () => {
       "premium_received",
       "premium_paid"
     ].includes(ledgerJson.transactionType);
-    const isStock = ["stock_in", "stock_out"].includes(ledgerJson.transactionType);
+    const isStock = ["stock_in", "stock_out", "stock_transfer", "stock_transfer_return"].includes(ledgerJson.transactionType);
 
     return {
       invoiceRefNo: ledgerJson.invoice ? `${ledgerJson.invoice.prefix}-${String(ledgerJson.invoiceId).padStart(6, "0")}` : null,
@@ -68,7 +69,8 @@ export const getCustomerLedgerData = async () => {
       { model: User, as: "updatedByUser" },
     ],
     order: [
-      ["date", "ASC"],  // primary order
+      ["date", "ASC"],
+      ["id", "ASC"],
     ],
     subQuery: false, // important when using includes
   });
@@ -97,7 +99,7 @@ export const getCustomerLedgerData = async () => {
       "premium_received",
       "premium_paid"
     ].includes(ledgerJson.transactionType);
-    const isStock = ["stock_in", "stock_out"].includes(ledgerJson.transactionType);
+    const isStock = ["stock_in", "stock_out", "stock_transfer", "stock_transfer_return"].includes(ledgerJson.transactionType);
 
     return {
       invoiceRefNo: ledgerJson.invoice ? `${ledgerJson.invoice.prefix}-${String(ledgerJson.invoiceId).padStart(6, "0")}` : null,

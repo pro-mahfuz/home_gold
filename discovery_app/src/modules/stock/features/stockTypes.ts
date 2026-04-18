@@ -25,7 +25,6 @@ export interface Stock {
   itemId: number;
   movementType: string;
   warehouseId?: number | null;
-  toWarehouseId?: number | null;
   bankId?: number | null;
   quantity: number;
 
@@ -50,9 +49,16 @@ export interface StockReport {
   unit?: string;
   itemName?: string;
   item: Item;
+  totalStockIn?: number;
+  totalStockOut?: number;
+  totalTransferOut?: number;
+  totalTransferReturn?: number;
   totalIn: number;
   totalOut: number;
   totalDamaged: number;
+  currentStock?: number;
+  transferStock?: number;
+  totalStock?: number;
   availableQty?: number;
 }
 

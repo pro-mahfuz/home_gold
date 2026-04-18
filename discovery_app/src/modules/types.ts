@@ -64,10 +64,16 @@ export const MovementTypeOptions: OptionStringType[] = [
   { value: "stock_in", label: "Stock-In" },
   { value: "stock_out", label: "Stock-Out" },
   { value: "stock_transfer", label: "Stock-Transfer" },
-  { value: "damaged", label: "Damaged" },
+  { value: "stock_transfer_return", label: "Stock-Transfer-Return" },
+  { value: "damaged", label: "Adjustment" },
   // { value: "saleReturn", label: "Return" },
-  // { value: "damage", label: "Damaged" }
+  // { value: "damage", label: "Adjustment" }
 ];
+
+export const getMovementTypeLabel = (movementType?: string) =>
+  MovementTypeOptions.find((option) => option.value === movementType)?.label ??
+  movementType ??
+  "";
 
 
 export const selectStyles = {

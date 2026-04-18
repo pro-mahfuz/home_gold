@@ -68,8 +68,6 @@ export default function StockCreateForm() {
     const UnitOptions = useSelector(selectAllUnitByBusiness(Number(user?.business?.id)));
     const parties = useSelector(selectAllParties);
 
-    
-
     const [formData, setFormData] = useState<Stock>({
         businessId: 0,
         date: '',
@@ -81,11 +79,15 @@ export default function StockCreateForm() {
         containerId: null,
         movementType: '',
         warehouseId: null,
-        toWarehouseId: null,
         bankId: null,
         quantity: 0,
         unit: ''
     });
+
+    const selectedCategoryName =
+        categories.find((c) => c.id === formData.categoryId)?.name?.toLowerCase() ?? "";
+    const isTransferMovement = ["stock_transfer", "stock_transfer_return"].includes(formData.movementType);
+    const isTransferReturn = formData.movementType === "stock_transfer_return";
 
     const containers = useSelector(selectAllContainer);
 
@@ -94,41 +96,46 @@ export default function StockCreateForm() {
           setFormData((prev) => ({
             ...prev,
             businessId: user?.business?.id,
-            createdBy: user.id
+            createdBy: user.id,
+            updatedBy: user.id,
           }));
         }
 
-    }, [user, formData.categoryId]);
+    }, [user]);
 
 
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({
             ...prev,
-            [name]: name === "partyId" || name === "categoryId" ? Number(value) : value,
+            [name]: name === "quantity" ? Number(value) : value,
         }));
     };
 
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        if (formData.movementType === "stock_transfer") {
+        if (isTransferMovement) {
             if (!(Number(formData.warehouseId) > 0)) {
-                toast.error("Please select From Warehouse for stock transfer.");
+                toast.error(isTransferReturn ? "Please select To Warehouse for stock transfer return." : "Please select From Warehouse for stock transfer.");
                 return;
             }
-            
+        }
+
+        if (isTransferReturn) {
+            if (!(Number(formData.partyId) > 0)) {
+                toast.error("Please select Party for stock transfer return.");
+                return;
+            }
         }
        
         try {
-            // Dispatch create action, including totalAmount
-            console.log("Stock formData: ", formData);
-            await dispatch(create(formData));
+            await dispatch(create(formData)).unwrap();
             toast.success("Stock created successfully!");
 
             navigate(`/stock/list`);
         } catch (err) {
-            toast.error("Failed to create stock.");
+            toast.error(typeof err === "string" ? err : "Failed to create stock.");
         }
     };
 
@@ -178,6 +185,17 @@ export default function StockCreateForm() {
                         }))}
                         placeholder="Select invoice type"
                         isClearable
+                        value={
+                            invoices
+                                .map((i) => ({
+                                    label: `#${i.invoiceNo ?? "No name"}`,
+                                    value: i.id,
+                                    invoiceType: i.invoiceType,
+                                    categoryId: i.categoryId,
+                                    partyId: i.partyId,
+                                }))
+                                .find((option) => option.value === formData.invoiceId) || null
+                        }
 
                         onChange={(selectedOption) => {
                             if (!selectedOption) {
@@ -185,6 +203,7 @@ export default function StockCreateForm() {
                                     ...prev,
                                     invoiceId: undefined,
                                     invoiceType: undefined,
+                                    categoryId: items.find((item) => item.id === prev.itemId)?.categoryId ?? 0,
                                 }));
                                 return;
                             }
@@ -204,13 +223,13 @@ export default function StockCreateForm() {
                 </div>
 
                 <div>
-                    <Label>Select Party (Optional)</Label>
+                    <Label>{isTransferReturn ? "Select Party" : "Select Party (Optional)"}</Label>
                     <Select
                         options={parties.map((p) => ({
                             label: `${p.name}`,
                             value: p.id,
                         }))}
-                        placeholder="Select party"
+                        placeholder={isTransferReturn ? "Select party" : "Select party (optional)"}
                         isClearable
                         value={
                             parties
@@ -283,6 +302,9 @@ export default function StockCreateForm() {
                         setFormData((prev) => ({
                             ...prev,
                             itemId: Number(selectedOption?.value) || 0,
+                            categoryId:
+                                items.find((item) => item.id === Number(selectedOption?.value))?.categoryId ??
+                                prev.categoryId,
                         }))
                         }
                         isClearable
@@ -292,7 +314,7 @@ export default function StockCreateForm() {
                     />
                 </div>
 
-                {!categories.find((c) => ["currency", "gold"].includes(c.name.toLowerCase()) ) && (
+                {selectedCategoryName !== "" && !["currency", "gold"].includes(selectedCategoryName) && (
                     <div>
                         <Label>Select Container</Label>
                         <Select
@@ -312,7 +334,7 @@ export default function StockCreateForm() {
                             onChange={(selectedOption) =>
                                 setFormData((prev) => ({
                                     ...prev,
-                                    containerId: Number(selectedOption!.value) ?? null,
+                                    containerId: selectedOption?.value ?? null,
                                 }))
                             }
                             isClearable
@@ -362,10 +384,10 @@ export default function StockCreateForm() {
                     />
                 </div>
 
-                { formData.movementType === "stock_transfer" && (
+                {isTransferMovement && (
                     <>
                         <div>
-                            <Label>Select From Warehouse</Label>
+                            <Label>{isTransferReturn ? "Select To Warehouse" : "Select From Warehouse"}</Label>
                             <Select
                                 options={
                                 warehouses
@@ -397,7 +419,7 @@ export default function StockCreateForm() {
                     </>
                 )}
 
-                { formData.movementType !== "stock_transfer" && categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() != "currency" && (
+                {!isTransferMovement && selectedCategoryName !== "currency" && selectedCategoryName !== "" && (
                     <div>
                         <Label>Select Warehouse</Label>
                         <Select
@@ -428,7 +450,7 @@ export default function StockCreateForm() {
                     </div>
                 )}
 
-                {formData.movementType !== "stock_transfer" && categories.find(c => c.id === formData.categoryId)?.name.toLowerCase() === "currency" && (
+                {!isTransferMovement && selectedCategoryName === "currency" && (
                     <div>
                         <Label>Select Stock Account</Label>
                         <Select
