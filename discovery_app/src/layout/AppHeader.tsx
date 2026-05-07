@@ -81,12 +81,18 @@ const AppHeader: React.FC = () => {
             {/* Cross Icon */}
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               to="/gold-price-in/list"
               className="inline-flex items-center justify-center rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 focus:outline-none"
             >
-              Price In
+              Gold Price In
+            </Link>
+            <Link
+              to="/bori-price-in"
+              className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 focus:outline-none"
+            >
+              Bori Price In
             </Link>
             <Link
               to="/gold-converter"

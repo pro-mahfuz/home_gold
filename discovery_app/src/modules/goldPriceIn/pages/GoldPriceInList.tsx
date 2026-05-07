@@ -129,6 +129,12 @@ const createInitialFormData = (businessId = 0): GoldPriceIn => ({
 
 const formatNumeric = (value?: string | number | null) => {
   if (value === null || value === undefined || value === "") return "--:--";
+
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return numericValue.toFixed(3);
+  }
+
   return value;
 };
 

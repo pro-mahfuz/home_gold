@@ -70,6 +70,7 @@ import ResetPassword from "./modules/auth/pages/ResetPassword";
 import ForgotPassword from "./modules/auth/pages/ForgotPassword";
 import GoldPriceInList from "./modules/goldPriceIn/pages/GoldPriceInList";
 import GoldConverter from "./modules/goldPriceIn/pages/GoldConverter";
+import BoriPriceIn from "./modules/goldPriceIn/pages/BoriPriceIn";
 import BaseCurrencySettings from "./modules/settings/pages/BaseCurrencySettings";
 
 
@@ -477,6 +478,12 @@ export default function App() {
             <Route index path="/gold-converter" element={
               <PrivateRoute permissions={['manage_dashboard']}>
                 <GoldConverter />
+              </PrivateRoute>}
+            />
+
+            <Route index path="/bori-price-in" element={
+              <PrivateRoute permissions={['manage_dashboard']}>
+                <BoriPriceIn />
               </PrivateRoute>}
             />
 
