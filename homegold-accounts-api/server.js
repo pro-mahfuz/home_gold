@@ -18,8 +18,8 @@ const PORT = process.env.PORT || 3000;
       await sequelize.authenticate();
       console.log("Database connected successfully");
 
-      app.listen(() => {
-        console.log(`Server running at [${process.env.NODE_ENV}]`);
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT} [${process.env.NODE_ENV}]`);
       });
     }
   } catch (err) {

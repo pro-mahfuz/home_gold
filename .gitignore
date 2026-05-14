@@ -1,3 +1,2 @@
-discovery_api/node_modules/
-discovery_app/node_modules/
-!discovery_app/dist/
+homegold-accounts-api/node_modules/
+homegold-accounts-app/node_modules/
